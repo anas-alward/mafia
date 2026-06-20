@@ -1,3 +1,4 @@
+import asyncio
 import random
 
 from channels.db import database_sync_to_async
@@ -27,12 +28,12 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.channel_layer.group_add(self.room_group, self.channel_name)
         await self.accept()
 
-        await self.channel_layer.group_send(self.room_group, {
-            'type': 'player_joined',
+        member_count = await self.get_member_count()
+        asyncio.create_task(self._broadcast('player_joined', {
             'user_id': self.user.id,
             'username': self.user.username,
-            'member_count': await self.get_member_count(),
-        })
+            'member_count': member_count,
+        }))
 
     async def disconnect(self, close_code):
         if not hasattr(self, 'room_group'):
@@ -40,11 +41,18 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
         await self.remove_member()
         await self.channel_layer.group_discard(self.room_group, self.channel_name)
-        await self.channel_layer.group_send(self.room_group, {
-            'type': 'player_left',
+
+        member_count = await self.get_member_count()
+        asyncio.create_task(self._broadcast('player_left', {
             'user_id': self.user.id,
             'username': self.user.username,
-            'member_count': await self.get_member_count(),
+            'member_count': member_count,
+        }))
+
+    async def _broadcast(self, event_type, payload):
+        await self.channel_layer.group_send(self.room_group, {
+            'type': event_type,
+            **payload,
         })
 
     async def receive_json(self, content):
@@ -68,14 +76,6 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                     'session_id': session_id,
                     'host': self.user.username,
                 })
-
-        elif event_type == 'vote':
-            await self.channel_layer.group_send(self.room_group, {
-                'type': 'vote_cast',
-                'user_id': self.user.id,
-                'username': self.user.username,
-                'target_id': content.get('target_id'),
-            })
 
     # ---- event handlers (sent to group, received by each client) ----
 
@@ -108,14 +108,6 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             'type': 'game_started',
             'session_id': event['session_id'],
             'host': event['host'],
-        })
-
-    async def vote_cast(self, event):
-        await self.send_json({
-            'type': 'vote_cast',
-            'user_id': event['user_id'],
-            'username': event['username'],
-            'target_id': event['target_id'],
         })
 
     # ---- database helpers ----
