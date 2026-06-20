@@ -1,6 +1,5 @@
 from urllib.parse import parse_qs
 
-from channels.auth import AuthMiddlewareStack
 from channels.db import database_sync_to_async
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import AccessToken
@@ -17,14 +16,29 @@ def get_user_from_token(token):
         return None
 
 
+def _extract_token(scope):
+    # 1. Query string: ws://host/ws/room/ABC/?token=...
+    query_string = scope.get('query_string', b'').decode()
+    params = parse_qs(query_string)
+    token = params.get('token', [None])[0]
+    if token:
+        return token
+
+    # 2. Authorization header: Bearer ...
+    for name, value in scope.get('headers', []):
+        if name == b'authorization':
+            auth = value.decode()
+            if auth.startswith('Bearer '):
+                return auth[7:]
+
+    return None
+
+
 class JWTAuthMiddleware:
     def __init__(self, app):
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        query_string = scope.get('query_string', b'').decode()
-        params = parse_qs(query_string)
-        token = params.get('token', [None])[0]
-
+        token = _extract_token(scope)
         scope['user'] = await get_user_from_token(token) if token else None
         return await self.app(scope, receive, send)
