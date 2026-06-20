@@ -2,7 +2,7 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from django.contrib.auth import get_user_model
 
-from .realtime import add_participant, create_meeting, remove_participant
+from .realtime import add_participant, create_meeting, end_meeting, remove_participant
 from .models import Room
 from .serializers import CreateRoomSerializer, RoomSerializer
 
@@ -95,6 +95,14 @@ class JoinRoomView(generics.GenericAPIView):
             'participant_id': credentials['participant_id'],
             'token': credentials['token'],
         })
+
+
+class HostedRoomListView(generics.ListAPIView):
+    serializer_class = RoomSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Room.objects.filter(host=self.request.user)
 
 
 class AddMemberView(generics.GenericAPIView):
@@ -255,4 +263,40 @@ class RemoveMemberView(generics.GenericAPIView):
             'room': RoomSerializer(room).data,
             'removed_user_id': user.id,
             'removed_username': user.username,
+        })
+
+
+class FinishRoomView(generics.GenericAPIView):
+    queryset = Room.objects.all()
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, code):
+        try:
+            room = Room.objects.get(code=code)
+        except Room.DoesNotExist:
+            return Response(
+                {'error': 'Room not found'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if room.host_id != request.user.id:
+            return Response(
+                {'error': 'Only the host can finish the room'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if room.status == Room.Status.FINISHED:
+            return Response(
+                {'error': 'Room is already finished'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        room.status = Room.Status.FINISHED
+        room.save(update_fields=['status'])
+
+        if room.meeting_id:
+            end_meeting(room.meeting_id)
+
+        return Response({
+            'room': RoomSerializer(room).data,
         })

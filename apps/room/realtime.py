@@ -91,3 +91,14 @@ def remove_participant(meeting_id: str, participant_id: str) -> None:
         meeting_id=meeting_id,
         participant_id=participant_id,
     )
+
+
+def end_meeting(meeting_id: str) -> None:
+    """Set a meeting status to INACTIVE."""
+    client = _get_client()
+    client.realtime_kit.meetings.update_meeting_by_id(
+        meeting_id=meeting_id,
+        account_id=_account_id(),
+        app_id=_app_id(),
+        status="INACTIVE",
+    )
