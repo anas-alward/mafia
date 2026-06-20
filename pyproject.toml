@@ -9,6 +9,7 @@ dependencies = [
     "channels-redis>=4.2.2",
     "daphne>=4.2.2",
     "django>=6.0.6",
+    "django-cors-headers>=4.9.0",
     "djangorestframework-simplejwt>=5.5.1",
     "psycopg2-binary>=2.9",
     "watchfiles>=1.2.0",
