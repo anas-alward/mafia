@@ -23,6 +23,8 @@ class Room(models.Model):
         related_name='joined_rooms',
         blank=True,
     )
+    meeting_id = models.CharField(max_length=64, blank=True)
+    participant_ids = models.JSONField(default=dict, blank=True)
     status = models.CharField(
         max_length=10,
         choices=Status.choices,
