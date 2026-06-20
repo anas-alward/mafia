@@ -16,7 +16,7 @@ class GameConsumer(AsyncJsonWebsocketConsumer):
             return
 
         self.host_id = self.session.room.host_id
-        self.phase = self.session.phase
+        self.phase = GameSession.Phase.NIGHT.value
         self.group = f'game_{self.session_id}'
         await self.channel_layer.group_add(self.group, self.channel_name)
         await self.accept()
@@ -24,6 +24,11 @@ class GameConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json({
             'type': 'your_role',
             'role': self.participant.role,
+        })
+
+        await self.channel_layer.group_send(self.group, {
+            'type': 'phase_query',
+            'reply_to': self.channel_name,
         })
 
     async def disconnect(self, close_code):
@@ -86,6 +91,8 @@ class GameConsumer(AsyncJsonWebsocketConsumer):
     async def handle_next_phase(self, content):
         if self.host_id != self.user.id:
             return
+        if self.phase == GameSession.Phase.ENDED.value:
+            return
         new_phase = await self.advance_phase()
         await self.channel_layer.group_send(self.group, {
             'type': 'phase_changed',
@@ -95,12 +102,6 @@ class GameConsumer(AsyncJsonWebsocketConsumer):
 
         if new_phase == GameSession.Phase.DAY.value:
             await self.resolve_night()
-
-        if new_phase == GameSession.Phase.ENDED.value:
-            await self.channel_layer.group_send(self.group, {
-                'type': 'game_over',
-                'winner': await self.get_winner(),
-            })
 
     async def resolve_night(self):
         night = self.session.night_actions or {}
@@ -156,10 +157,22 @@ class GameConsumer(AsyncJsonWebsocketConsumer):
         })
 
     async def game_over(self, event):
+        self.phase = GameSession.Phase.ENDED.value
         await self.send_json({
             'type': 'game_over',
             'winner': event['winner'],
         })
+
+    async def phase_query(self, event):
+        reply_to = event.get('reply_to')
+        if reply_to and reply_to != self.channel_name:
+            await self.channel_layer.send(reply_to, {
+                'type': 'phase_info',
+                'phase': self.phase,
+            })
+
+    async def phase_info(self, event):
+        self.phase = event['phase']
 
     @database_sync_to_async
     def get_session_and_participant(self):
@@ -208,18 +221,18 @@ class GameConsumer(AsyncJsonWebsocketConsumer):
             GameSession.Phase.DAY,
             GameSession.Phase.VOTING,
         ]
-        session = GameSession.objects.get(pk=self.session_id)
         phases_by_value = {p.value: p for p in order}
-        current = phases_by_value[session.phase]
+        current = phases_by_value[self.phase]
         idx = order.index(current)
         if idx == len(order) - 1:
+            session = GameSession.objects.get(pk=self.session_id)
             session.round_number += 1
-            session.phase = order[0].value
+            session.save()
+            self.session.round_number = session.round_number
+            self.phase = order[0].value
         else:
-            session.phase = order[idx + 1].value
-        session.save()
-        self.session = session
-        return session.phase
+            self.phase = order[idx + 1].value
+        return self.phase
 
     @database_sync_to_async
     def get_round_number(self):
@@ -238,13 +251,11 @@ class GameConsumer(AsyncJsonWebsocketConsumer):
 
         if mafia_alive == 0:
             session.winner = GameSession.Outcome.VILLAGERS
-            session.phase = GameSession.Phase.ENDED
             session.save()
             self._record_results(session)
             return session.winner
         elif mafia_alive >= villager_alive:
             session.winner = GameSession.Outcome.MAFIA
-            session.phase = GameSession.Phase.ENDED
             session.save()
             self._record_results(session)
             return session.winner

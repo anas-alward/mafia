@@ -21,11 +21,6 @@ class GameSession(models.Model):
         on_delete=models.CASCADE,
         related_name='game_session',
     )
-    phase = models.CharField(
-        max_length=12,
-        choices=Phase.choices,
-        default=Phase.NIGHT,
-    )
     round_number = models.PositiveSmallIntegerField(default=1)
     players = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
@@ -45,7 +40,7 @@ class GameSession(models.Model):
         ordering = ['-started_at']
 
     def __str__(self):
-        return f'{self.room.name} — Round {self.round_number} ({self.get_phase_display()})'
+        return f'{self.room.name} — Round {self.round_number}'
 
     def alive_players(self):
         return self.participant_set.filter(is_alive=True)
