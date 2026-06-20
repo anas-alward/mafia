@@ -8,7 +8,6 @@ class GameSession(models.Model):
     class Phase(models.TextChoices):
         NIGHT = 'night', 'Night'
         DAY = 'day', 'Day'
-        DISCUSSION = 'discussion', 'Discussion'
         VOTING = 'voting', 'Voting'
         ENDED = 'ended', 'Ended'
 

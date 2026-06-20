@@ -104,15 +104,7 @@ async def main():
         assert msg["phase"] == "day", f"{name}: phase={msg['phase']}"
     print("✓ Phase → day (diana survived via doctor protection)")
 
-    # ── Phase: DAY → DISCUSSION ──
-    await ws_alice.send(json.dumps({"type": "next_phase"}))
-    for name, ws in connections.items():
-        msg = await recv_with_timeout(ws)
-        assert msg["type"] == "phase_changed", f"{name}: got {msg['type']}"
-        assert msg["phase"] == "discussion", f"{name}: phase={msg.get('phase')}"
-    print("✓ Phase → discussion")
-
-    # ── Phase: DISCUSSION → VOTING ──
+    # ── Phase: DAY → VOTING ──
     await ws_alice.send(json.dumps({"type": "next_phase"}))
     for name, ws in connections.items():
         msg = await recv_with_timeout(ws)
@@ -170,21 +162,14 @@ async def main():
     except Exception:
         print("✓ Dead player rejected on reconnect")
 
-    # ── Phase: DAY → DISCUSSION ──
-    await ws_alice.send(json.dumps({"type": "next_phase"}))
-    for name, ws in connections.items():
-        msg = await recv_with_timeout(ws)
-        assert msg["type"] == "phase_changed" and msg["phase"] == "discussion"
-    print("✓ Phase → discussion")
-
-    # ── Phase: DISCUSSION → VOTING ──
+    # ── Phase: DAY → VOTING (round 2) ──
     await ws_alice.send(json.dumps({"type": "next_phase"}))
     for name, ws in connections.items():
         msg = await recv_with_timeout(ws)
         assert msg["type"] == "phase_changed" and msg["phase"] == "voting"
     print("✓ Phase → voting")
 
-    # ── Advance to night round 3 ──
+    # ── Phase: VOTING → NIGHT (round 3) ──
     await ws_alice.send(json.dumps({"type": "next_phase"}))
     for name, ws in connections.items():
         msg = await recv_with_timeout(ws)

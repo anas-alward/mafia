@@ -206,7 +206,6 @@ class GameConsumer(AsyncJsonWebsocketConsumer):
         order = [
             GameSession.Phase.NIGHT,
             GameSession.Phase.DAY,
-            GameSession.Phase.DISCUSSION,
             GameSession.Phase.VOTING,
         ]
         session = GameSession.objects.get(pk=self.session_id)
