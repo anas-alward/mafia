@@ -1,23 +1,39 @@
+"""Room REST endpoints."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from django.contrib.auth import get_user_model
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
-from django.contrib.auth import get_user_model
 
-from .realtime import add_participant, create_meeting, end_meeting, remove_participant
-from .models import Room
-from .serializers import CreateRoomSerializer, RoomSerializer
+from utils.errors import api_error
+from utils.pagination import StandardPagination
+
+from .models import Room, RoomJoinRequest, RoomMember
+from .realtime import realtime
+from .serializers import CreateRoomSerializer, JoinRequestSerializer, RoomSerializer
+from .services import RoomService
 
 User = get_user_model()
 
+def _create_cloudflare_meeting(room: Room) -> str | None:
+    """Create a Realtime Kit meeting. Returns None if Cloudflare is not configured."""
 
-def _save_participant(room, user_id, participant_id):
-    room.participant_ids[str(user_id)] = participant_id
-    Room.objects.filter(pk=room.pk).update(participant_ids=room.participant_ids)
+    meeting_id = realtime.create_meeting(room.name)
+    room.meeting_id = meeting_id
+    room.save(update_fields=['meeting_id'])
 
-
-def _pop_participant(room, user_id):
-    cf_id = room.participant_ids.pop(str(user_id), None)
-    Room.objects.filter(pk=room.pk).update(participant_ids=room.participant_ids)
-    return cf_id
+    credentials = realtime.add_participant(
+        meeting_id=meeting_id,
+        participant_id=str(room.host_id),
+        name=room.host.username,
+    )
+    RoomMember.objects.filter(user_id=room.host_id, room=room).update(
+        cloudflare_participant_id=credentials['participant_id'],
+    )
+    return None
 
 
 class CreateRoomView(generics.CreateAPIView):
@@ -25,278 +41,262 @@ class CreateRoomView(generics.CreateAPIView):
     serializer_class = CreateRoomSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def create(self, request, *args, **kwargs):
+    def create(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            from utils.errors import api_validation_error
 
-        room = serializer.save(host=request.user)
+            return api_validation_error(
+                'Validation failed.',
+                details={k: v for k, v in serializer.errors.items()},
+            )
 
-        meeting_id = create_meeting(room.name)
-        room.meeting_id = meeting_id
-        room.save(update_fields=['meeting_id'])
-
-        credentials = add_participant(
-            meeting_id=meeting_id,
-            participant_id=str(request.user.id),
-            name=request.user.username,
+        room = RoomService().create_room(
+            host=request.user,
+            **serializer.validated_data,
         )
-        _save_participant(room, request.user.id, credentials['participant_id'])
+        _create_cloudflare_meeting(room)
 
-        return Response({
-            'room': RoomSerializer(room).data,
-            'participant_id': credentials['participant_id'],
-            'token': credentials['token'],
-        }, status=status.HTTP_201_CREATED)
+        return Response(
+            {
+                'room': RoomSerializer(room).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class JoinRoomView(generics.GenericAPIView):
     queryset = Room.objects.all()
     permission_classes = [permissions.IsAuthenticated]
 
-    def post(self, request, code):
+    def post(self, request: Any, code: str) -> Response:
+        svc = RoomService()
         try:
-            room = Room.objects.get(code=code)
-        except Room.DoesNotExist:
-            return Response(
-                {'error': 'Room not found'},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            room = svc.get_room_by_code(code)
+        except ValueError:
+            return api_error('Room not found.', status=status.HTTP_404_NOT_FOUND)
 
-        if room.status != Room.Status.WAITING:
-            return Response(
-                {'error': 'Game already started'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        try:
+            join_req = svc.request_to_join(room=room, user=request.user)
+        except ValueError as e:
+            return api_error(str(e), status=status.HTTP_400_BAD_REQUEST)
 
-        if room.members.count() >= room.max_members:
-            return Response(
-                {'error': 'Room is full'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if room.members.filter(id=request.user.id).exists():
-            return Response(
-                {'error': 'Already a member of this room'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        room.members.add(request.user)
-
-        credentials = add_participant(
-            meeting_id=room.meeting_id,
-            participant_id=str(request.user.id),
-            name=request.user.username,
-            preset_name='group_call_participant',
+        return Response(
+            {
+                'request_id': join_req.id,
+                'status': join_req.status,
+            },
+            status=status.HTTP_200_OK,
         )
-        _save_participant(room, request.user.id, credentials['participant_id'])
-
-        return Response({
-            'room': RoomSerializer(room).data,
-            'participant_id': credentials['participant_id'],
-            'token': credentials['token'],
-        })
 
 
 class HostedRoomListView(generics.ListAPIView):
     serializer_class = RoomSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardPagination
 
-    def get_queryset(self):
-        return Room.objects.filter(host=self.request.user)
+    def get_queryset(self) -> Any:
+        return RoomService().get_hosted_rooms(host=self.request.user)
 
 
 class AddMemberView(generics.GenericAPIView):
     queryset = Room.objects.all()
     permission_classes = [permissions.IsAuthenticated]
 
-    def post(self, request, code):
+    def post(self, request: Any, code: str) -> Response:
+        svc = RoomService()
         try:
-            room = Room.objects.get(code=code)
-        except Room.DoesNotExist:
-            return Response(
-                {'error': 'Room not found'},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        if room.host_id != request.user.id:
-            return Response(
-                {'error': 'Only the host can add members'},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        if room.status != Room.Status.WAITING:
-            return Response(
-                {'error': 'Game already started'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if room.members.count() >= room.max_members:
-            return Response(
-                {'error': 'Room is full'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            room = svc.get_room_by_code(code)
+        except ValueError:
+            return api_error('Room not found.', status=status.HTTP_404_NOT_FOUND)
 
         user_id = request.data.get('user_id')
         if not user_id:
-            return Response(
-                {'error': 'user_id is required'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return api_error('user_id is required.', status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            user = User.objects.get(id=user_id)
+            friend = User.objects.get(id=user_id)
         except User.DoesNotExist:
-            return Response(
-                {'error': 'User not found'},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            return api_error('User not found.', status=status.HTTP_404_NOT_FOUND)
 
-        if room.members.filter(id=user.id).exists():
-            return Response(
-                {'error': 'User is already a member'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        try:
+            svc.add_friend_to_room(room=room, host=request.user, friend=friend)
+        except ValueError as e:
+            return api_error(str(e), status=status.HTTP_400_BAD_REQUEST)
 
-        room.members.add(user)
-
-        credentials = add_participant(
-            meeting_id=room.meeting_id,
-            participant_id=str(user.id),
-            name=user.username,
-            preset_name='group_call_participant',
+        return Response(
+            {
+                'room': RoomSerializer(room).data,
+                'user_id': friend.id,
+                'username': friend.username,
+            }
         )
-        _save_participant(room, user.id, credentials['participant_id'])
-
-        return Response({
-            'room': RoomSerializer(room).data,
-            'user_id': user.id,
-            'username': user.username,
-            'participant_id': credentials['participant_id'],
-            'token': credentials['token'],
-        })
 
 
 class MemberListView(generics.GenericAPIView):
     queryset = Room.objects.all()
     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request, code):
+    def get(self, request: Any, code: str) -> Response:
+        svc = RoomService()
         try:
-            room = Room.objects.get(code=code)
-        except Room.DoesNotExist:
-            return Response(
-                {'error': 'Room not found'},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            room = svc.get_room_by_code(code)
+        except ValueError:
+            return api_error('Room not found.', status=status.HTTP_404_NOT_FOUND)
 
-        if not room.members.filter(id=request.user.id).exists() and room.host_id != request.user.id:
-            return Response(
-                {'error': 'You are not a member of this room'},
+        is_member = room.members.filter(user=request.user).exists()
+        if not is_member and room.host != request.user:
+            return api_error(
+                'You are not a member of this room.',
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        members = room.members.values('id', 'username')
-        return Response({
-            'host': {'id': room.host_id, 'username': room.host.username},
-            'member_count': room.members.count(),
-            'max_members': room.max_members,
-            'members': list(members),
-        })
+        members = list(svc.get_members(room))
+        return Response(
+            {
+                'host': {'id': room.host_id, 'username': room.host.username},
+                'member_count': len(members),
+                'max_members': room.max_members,
+                'members': [
+                    {
+                        'id': m.user_id,
+                        'username': m.user.username,
+                        'joined_at': m.joined_at,
+                    }
+                    for m in members
+                ],
+            }
+        )
 
 
 class RemoveMemberView(generics.GenericAPIView):
     queryset = Room.objects.all()
     permission_classes = [permissions.IsAuthenticated]
 
-    def post(self, request, code):
+    def post(self, request: Any, code: str) -> Response:
+        svc = RoomService()
         try:
-            room = Room.objects.get(code=code)
-        except Room.DoesNotExist:
-            return Response(
-                {'error': 'Room not found'},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        if room.host_id != request.user.id:
-            return Response(
-                {'error': 'Only the host can remove members'},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+            room = svc.get_room_by_code(code)
+        except ValueError:
+            return api_error('Room not found.', status=status.HTTP_404_NOT_FOUND)
 
         user_id = request.data.get('user_id')
         if not user_id:
-            return Response(
-                {'error': 'user_id is required'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if str(user_id) == str(request.user.id):
-            return Response(
-                {'error': 'Cannot remove yourself as host'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return api_error('user_id is required.', status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            user = User.objects.get(id=user_id)
+            user_to_remove = User.objects.get(id=user_id)
         except User.DoesNotExist:
-            return Response(
-                {'error': 'User not found'},
-                status=status.HTTP_404_NOT_FOUND,
+            return api_error('User not found.', status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            svc.remove_member(
+                room=room, host=request.user, user_to_remove=user_to_remove
             )
+        except ValueError as e:
+            return api_error(str(e), status=status.HTTP_400_BAD_REQUEST)
 
-        if not room.members.filter(id=user.id).exists():
-            return Response(
-                {'error': 'User is not a member of this room'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        room.members.remove(user)
-
-        cf_participant_id = _pop_participant(room, user.id)
-        if cf_participant_id:
-            remove_participant(
-                meeting_id=room.meeting_id,
-                participant_id=cf_participant_id,
-            )
-
-        return Response({
-            'room': RoomSerializer(room).data,
-            'removed_user_id': user.id,
-            'removed_username': user.username,
-        })
+        return Response(
+            {
+                'room': RoomSerializer(room).data,
+                'removed_user_id': user_to_remove.id,
+                'removed_username': user_to_remove.username,
+            }
+        )
 
 
 class FinishRoomView(generics.GenericAPIView):
     queryset = Room.objects.all()
     permission_classes = [permissions.IsAuthenticated]
 
-    def post(self, request, code):
+    def post(self, request: Any, code: str) -> Response:
+        svc = RoomService()
         try:
-            room = Room.objects.get(code=code)
-        except Room.DoesNotExist:
-            return Response(
-                {'error': 'Room not found'},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            room = svc.get_room_by_code(code)
+        except ValueError:
+            return api_error('Room not found.', status=status.HTTP_404_NOT_FOUND)
 
-        if room.host_id != request.user.id:
-            return Response(
-                {'error': 'Only the host can finish the room'},
+        try:
+            svc.finish_room(room=room, user=request.user)
+        except ValueError as e:
+            status_code = status.HTTP_400_BAD_REQUEST
+            if 'Only the host' in str(e):
+                status_code = status.HTTP_403_FORBIDDEN
+            return api_error(str(e), status=status_code)
+
+        return Response({'room': RoomSerializer(room).data})
+
+
+class JoinRequestListView(generics.GenericAPIView):
+    queryset = Room.objects.all()
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardPagination
+
+    def get(self, request: Any, code: str) -> Response:
+        svc = RoomService()
+        try:
+            room = svc.get_room_by_code(code)
+        except ValueError:
+            return api_error('Room not found.', status=status.HTTP_404_NOT_FOUND)
+
+        if room.host != request.user:
+            return api_error(
+                'Only the host can view join requests.',
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        if room.status == Room.Status.FINISHED:
-            return Response(
-                {'error': 'Room is already finished'},
-                status=status.HTTP_400_BAD_REQUEST,
+        requests = svc.get_join_requests(room)
+        page = self.paginate_queryset(requests)
+        if page is not None:
+            return self.get_paginated_response(
+                JoinRequestSerializer(page, many=True).data
             )
+        return Response(
+            {
+                'requests': JoinRequestSerializer(requests, many=True).data,
+            }
+        )
 
-        room.status = Room.Status.FINISHED
-        room.save(update_fields=['status'])
 
-        if room.meeting_id:
-            end_meeting(room.meeting_id)
+class AcceptJoinRequestView(generics.GenericAPIView):
+    permission_classes = [permissions.IsAuthenticated]
 
-        return Response({
-            'room': RoomSerializer(room).data,
-        })
+    def post(self, request: Any, code: str, request_id: int) -> Response:
+        svc = RoomService()
+        try:
+            svc.get_room_by_code(code)
+        except ValueError:
+            return api_error('Room not found.', status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            room = svc.accept_join_request(request_id=request_id, host=request.user)
+        except RoomJoinRequest.DoesNotExist:
+            return api_error(
+                'Join request not found.', status=status.HTTP_404_NOT_FOUND
+            )
+        except ValueError as e:
+            return api_error(str(e), status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({'room': RoomSerializer(room).data})
+
+
+class RejectJoinRequestView(generics.GenericAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: Any, code: str, request_id: int) -> Response:
+        svc = RoomService()
+        try:
+            svc.get_room_by_code(code)
+        except ValueError:
+            return api_error('Room not found.', status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            svc.reject_join_request(request_id=request_id, host=request.user)
+        except RoomJoinRequest.DoesNotExist:
+            return api_error(
+                'Join request not found.', status=status.HTTP_404_NOT_FOUND
+            )
+        except ValueError as e:
+            return api_error(str(e), status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({'status': 'rejected'})
