@@ -13,8 +13,11 @@ class RegisterSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True, min_length=8)
 
     def validate_email(self, value):
-        if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError('A user with this email already exists.')
+        user = User.objects.filter(email=value).first()
+        if user and user.is_verified:
+            raise serializers.ValidationError(
+                'A verified account with this email already exists.'
+            )
         return value
 
 class VerifyEmailSerializer(serializers.Serializer):

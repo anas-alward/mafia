@@ -198,7 +198,7 @@ class US2LoginTests(TestCase):
         }, format='json')
 
         assert resp.status_code == 401
-        assert 'Invalid credentials' in resp.data.get('error', '')
+        assert 'Invalid credentials' in resp.data.get('message', '')
 
     def test_login_unverified_account_returns_401(self) -> None:
         """Unverified account login fails with generic 401."""

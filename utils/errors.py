@@ -1,45 +1,91 @@
 """Uniform error response helpers.
 
-Ensures all error responses follow the format:
-{"error": "Human-readable message", "errors": {"field": ["errors"]}}
+All error responses follow the format:
+{
+  "message": "Human-readable message",
+  "errors": [
+    {"code": "error_code", "message": "Human-readable", "field": "optional"}
+  ]
+}
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypedDict
 
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
 
 
-def api_error(
+class ErrorItem(TypedDict, total=False):
+    code: str
+    message: str
+    field: str
+
+
+def api_error(message: str, code: str = 'error', status: int = 400) -> Response:
+    return Response({
+        'message': message,
+        'errors': [{'code': code, 'message': message}],
+    }, status=status)
+
+
+def api_validation_error(
     message: str,
-    status: int = 400,
-    errors: dict[str, Any] | None = None,
+    errors: dict[str, list[str]],
+    code: str = 'invalid',
 ) -> Response:
-    body: dict[str, Any] = {'error': message}
-    if errors:
-        body['errors'] = errors
-    return Response(body, status=status)
+    error_items: list[ErrorItem] = []
+    for field, msgs in errors.items():
+        for msg in msgs:
+            error_items.append({
+                'code': code,
+                'message': str(msg),
+                'field': field,
+            })
+    return Response({
+        'message': message,
+        'errors': error_items,
+    }, status=400)
 
 
-def api_validation_error(message: str, errors: dict[str, list[str]]) -> Response:
-    return api_error(message, status=400, errors=errors)
-
-
-def global_exception_handler(exc: Exception, context: dict[str, Any]) -> Response | None:
+def global_exception_handler(
+    exc: Exception, context: dict[str, Any]
+) -> Response | None:
     """DRF exception handler wrapping all unhandled exceptions.
 
-    Formats 400/validation errors as {"error": "...", "errors": {...}}.
-    Delegates to DRF's default handler first, then normalizes the format.
+    Normalizes output to {"message": "...", "errors": [...]}.
+    Delegates to DRF's default handler first, then reformats.
     """
     response = exception_handler(exc, context)
 
     if response is not None and isinstance(response.data, dict):
         data = dict(response.data)
         detail = data.pop('detail', None)
-        errors = data if data else None
         message = str(detail) if detail else str(exc)
-        return api_error(message, status=response.status_code, errors=errors)
+
+        error_items: list[ErrorItem] = []
+        if data:
+            for field, msgs in data.items():
+                if isinstance(msgs, list):
+                    for msg in msgs:
+                        error_items.append({
+                            'code': 'invalid',
+                            'message': str(msg),
+                            'field': field,
+                        })
+                else:
+                    error_items.append({
+                        'code': 'invalid',
+                        'message': str(msgs),
+                        'field': field,
+                    })
+        else:
+            error_items.append({'code': 'error', 'message': message})
+
+        return Response({
+            'message': message,
+            'errors': error_items,
+        }, status=response.status_code)
 
     return response
