@@ -188,6 +188,30 @@ CORS_ALLOWED_ORIGINS = [
 CORS_ALLOW_CREDENTIALS = True
 
 
+# Celery
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://redis:6379/0')
+CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+CELERY_TASK_ALWAYS_EAGER = False
+
+# Authentication backends
+AUTHENTICATION_BACKENDS = [
+    'apps.accounts.services.account.EmailAuthBackend',
+]
+
+# Email verification
+EMAIL_VERIFICATION_ENABLED = os.environ.get('EMAIL_VERIFICATION_ENABLED', 'True').lower() in ('true', '1', 'yes')
+EMAIL_VERIFICATION_TIMEOUT = timedelta(minutes=int(os.environ.get('EMAIL_VERIFICATION_TIMEOUT_MINUTES', '10')))
+PASSWORD_RESET_TIMEOUT = timedelta(hours=1)
+
+# Mailjet
+MAILJET_API_KEY = os.environ.get('MAILJET_API_KEY', '')
+MAILJET_API_SECRET = os.environ.get('MAILJET_API_SECRET', '')
+MAILJET_SENDER_EMAIL = os.environ.get('MAILJET_SENDER_EMAIL', 'noreply@mafia.game')
+
 ## Realtime Kit (Cloudflare) configuration
 CLOUDFLARE_ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
 CLOUDFLARE_APP_ID = os.environ.get("CLOUDFLARE_APP_ID")
