@@ -18,6 +18,7 @@ from .serializers import (
     PasswordResetRequestSerializer,
     RegisterSerializer,
     ResendVerificationSerializer,
+    UserSerializer,
     VerifyEmailSerializer,
 )
 from .services.account import AccountService
@@ -212,3 +213,11 @@ class LogoutView(generics.GenericAPIView):
 
 class TokenRefreshView(SimpleJWTTokenRefreshView):
     pass
+
+
+class MeView(generics.RetrieveAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = UserSerializer
+
+    def get_object(self) -> Any:
+        return self.request.user
