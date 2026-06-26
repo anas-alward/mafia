@@ -29,7 +29,7 @@ class SendFriendRequestView(generics.GenericAPIView):
             from utils.errors import api_validation_error
             return api_validation_error(
                 'Validation failed.',
-                details={k: v for k, v in serializer.errors.items()},
+                errors=dict(serializer.errors),
             )
 
         svc = FriendService()

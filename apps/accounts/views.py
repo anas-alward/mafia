@@ -35,7 +35,7 @@ class RegisterView(generics.CreateAPIView):
         if not serializer.is_valid():
             return api_validation_error(
                 'Validation failed.',
-                details=dict(serializer.errors),
+                errors=dict(serializer.errors),
             )
 
         try:
@@ -60,7 +60,7 @@ class VerifyEmailView(generics.GenericAPIView):
         if not serializer.is_valid():
             return api_validation_error(
                 'Validation failed.',
-                details=dict(serializer.errors),
+                errors=dict(serializer.errors),
             )
 
         try:
@@ -83,7 +83,7 @@ class ResendVerificationView(generics.GenericAPIView):
         if not serializer.is_valid():
             return api_validation_error(
                 'Validation failed.',
-                details=dict(serializer.errors),
+                errors=dict(serializer.errors),
             )
 
         AccountService().resend_verification(**serializer.validated_data)
@@ -103,7 +103,7 @@ class LoginView(generics.GenericAPIView):
         if not serializer.is_valid():
             return api_validation_error(
                 'Validation failed.',
-                details=dict(serializer.errors),
+                errors=dict(serializer.errors),
             )
 
         try:
@@ -130,7 +130,7 @@ class PasswordResetRequestView(generics.GenericAPIView):
         if not serializer.is_valid():
             return api_validation_error(
                 'Validation failed.',
-                details=dict(serializer.errors),
+                errors=dict(serializer.errors),
             )
 
         AccountService().request_password_reset(**serializer.validated_data)
@@ -150,7 +150,7 @@ class PasswordResetConfirmView(generics.GenericAPIView):
         if not serializer.is_valid():
             return api_validation_error(
                 'Validation failed.',
-                details=dict(serializer.errors),
+                errors=dict(serializer.errors),
             )
 
         try:
@@ -172,7 +172,7 @@ class ChangePasswordView(generics.GenericAPIView):
         if not serializer.is_valid():
             return api_validation_error(
                 'Validation failed.',
-                details=dict(serializer.errors),
+                errors=dict(serializer.errors),
             )
 
         try:

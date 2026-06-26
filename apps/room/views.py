@@ -48,7 +48,7 @@ class CreateRoomView(generics.CreateAPIView):
 
             return api_validation_error(
                 'Validation failed.',
-                details={k: v for k, v in serializer.errors.items()},
+                errors=dict(serializer.errors),
             )
 
         room = RoomService().create_room(
