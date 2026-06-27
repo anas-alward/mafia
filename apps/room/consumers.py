@@ -6,7 +6,7 @@ from typing import Any
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
-
+from .realtime import realtime
 from .models import Room, RoomMember
 
 
@@ -33,13 +33,17 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 await self._regain_host(room)
                 host_regained = True
 
-        await self.add_member(room)
+        if not self.is_member():
+            await self.close(code=4003)
+            return
+
         await self.channel_layer.group_add(self.room_group, self.channel_name)
         await self.accept()
 
         # Send full current room state to the connecting client
         room_state = await self._get_room_state(room)
-        await self.send_json({'type': 'room_state', **room_state})
+        credentials = realtime.add_participant(room.meeting_id)
+        await self.send_json({'type': 'room_state','credentials': credentials ,**room_state})
 
         if host_regained:
             await self.channel_layer.group_send(self.room_group, {
@@ -187,13 +191,8 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             return None
 
     @database_sync_to_async
-    def add_member(self, room: Room) -> None:
-        if not RoomMember.objects.filter(user=self.user, room=room).exists():
-            RoomMember.objects.create(
-                user=self.user,
-                room=room,
-                added_by=RoomMember.AddedBy.LINK_REQUEST,
-            )
+    def is_member(self, room: Room) -> None:
+        return RoomMember.objects.filter(user=self.user, room=room).exists()
 
     @database_sync_to_async
     def remove_member(self) -> None:

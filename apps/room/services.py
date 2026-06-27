@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from django.db import models, transaction
 from django.utils import timezone
-
 from apps.accounts.models import User
 
 from .models import Room, RoomJoinRequest, RoomMember
+from .realtime import  realtime
 
 
 class RoomService:
@@ -27,6 +27,10 @@ class RoomService:
             scheduled_at=scheduled_at,
             role_configuration=role_configuration or {},
         )
+        meeting_id = realtime.create_meeting(room.name)
+        room.meeting_id = meeting_id
+        room.save(update_fields=['meeting_id'])
+
         RoomMember.objects.create(
             user=host,
             room=room,

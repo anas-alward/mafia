@@ -18,22 +18,33 @@ from .services import RoomService
 
 User = get_user_model()
 
-def _create_cloudflare_meeting(room: Room) -> str | None:
-    """Create a Realtime Kit meeting. Returns None if Cloudflare is not configured."""
 
-    meeting_id = realtime.create_meeting(room.name)
-    room.meeting_id = meeting_id
-    room.save(update_fields=['meeting_id'])
+class RoomDetailView(generics.RetrieveAPIView):
+    lookup_field = 'code'
+    lookup_url_kwarg = 'code'
+    queryset = Room.objects.all()
+    serializer_class = RoomSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
-    credentials = realtime.add_participant(
-        meeting_id=meeting_id,
-        participant_id=str(room.host_id),
-        name=room.host.username,
-    )
-    RoomMember.objects.filter(user_id=room.host_id, room=room).update(
-        cloudflare_participant_id=credentials['participant_id'],
-    )
-    return None
+    def get_object(self) ->耳目 None:
+        code = self.kwargs.get(self.lookup_url_kwarg)
+        try:
+            room = Room.objects.get(code=code)
+        except Room.DoesNotExist:
+            raise ValueError('Room not found.')
+
+        is_member = room.members.filter(user=self.request.user).exists()
+        if not is_member and room.host != self.request.user:
+            raise PermissionError('You are not a member of this room.')
+
+        return room
+
+    def handle_exception(self, exc: Any) -> Response:
+        if isinstance(exc, ValueError):
+            return api_error(str(exc), status=status.HTTP_404_NOT_FOUND)
+        if isinstance(exc, PermissionError):
+            return api_error(str(exc), status=status.HTTP_403_FORBIDDEN)
+        return super().handle_exception(exc)
 
 
 class CreateRoomView(generics.CreateAPIView):
@@ -55,7 +66,6 @@ class CreateRoomView(generics.CreateAPIView):
             host=request.user,
             **serializer.validated_data,
         )
-        _create_cloudflare_meeting(room)
 
         return Response(
             {

@@ -9,6 +9,7 @@ from .views import (
     AddMemberView,
     CreateRoomView,
     FinishRoomView,
+    RoomDetailView,
     HostedRoomListView,
     JoinRequestListView,
     JoinRoomView,
@@ -19,6 +20,7 @@ from .views import (
 
 urlpatterns = [
     path('', HostedRoomListView.as_view(), name='hosted-rooms'),
+    path('<str:code>/', RoomDetailView.as_view(), name='room-detail'),
     path('create/', CreateRoomView.as_view(), name='create-room'),
     path('<str:code>/join/', JoinRoomView.as_view(), name='join-room'),
     path('<str:code>/members/', MemberListView.as_view(), name='list-members'),
