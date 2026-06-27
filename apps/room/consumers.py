@@ -391,6 +391,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 'code': room.code,
                 'name': room.name,
                 'status': room.status,
+                'meeting_id':room.meeting_id,
                 'host': {'id': room.host_id, 'username': room.host.username},
                 'max_members': room.max_members,
                 'role_configuration': room.role_configuration,
