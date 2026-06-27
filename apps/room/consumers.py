@@ -47,11 +47,24 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     async def _connect_as_member(self, room: Room) -> None:
         self._is_member = True
 
-        host_regained = False
-        if room.host_id != self.user.id:
-            if await self._was_original_host(room):
-                await self._regain_host(room)
-                host_regained = True
+        # Ensure user is in the Redis members set (recovers from restarts)
+        r = _get_redis()
+        try:
+            await r.hset(
+                f'room:{self.code}:members',
+                str(self.user.id),
+                self.user.username,
+            )
+        finally:
+            await r.aclose()
+
+        if room.host_id == self.user.id:
+            host_regained = False
+        elif await self._was_original_host(room):
+            await self._regain_host(room)
+            host_regained = True
+        else:
+            host_regained = False
 
         await self.channel_layer.group_add(self.room_group, self.channel_name)
         await self.accept()
@@ -99,6 +112,12 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             )
         finally:
             await r.aclose()
+
+        await self.send_json({
+            'type': 'waiting_room',
+            'room_code': self.code,
+            'room_name': room.name,
+        })
 
         await self.channel_layer.group_send(self.room_group, {
             'type': 'join_request_received',
