@@ -18,10 +18,6 @@ class CreateRoomSerializer(serializers.ModelSerializer):
             'role_configuration': {'required': False, 'default': dict},
         }
 
-    def validate_max_members(self, value: int) -> int:
-        if value is not None and (value < 4 or value > 20):
-            raise serializers.ValidationError('Must be between 4 and 20.')
-        return value
 
 
 class RoomSerializer(serializers.ModelSerializer):
