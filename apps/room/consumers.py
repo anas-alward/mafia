@@ -37,7 +37,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self.close(code=4002)
             return
 
-        if await self._check_membership(room):
+        if room.host_id == self.user.id or await self._check_membership(room):
             await self._connect_as_member(room)
         else:
             await self._connect_as_pending(room)
