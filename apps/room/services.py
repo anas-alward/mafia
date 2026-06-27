@@ -2,27 +2,56 @@
 
 from __future__ import annotations
 
-from django.db import models, transaction
-from django.utils import timezone
-from apps.accounts.models import User
+import os
+import uuid
 
-from .models import Room, RoomJoinRequest, RoomMember
-from .realtime import  realtime
+import redis
+from django.contrib.auth import get_user_model
+from django.db import models
+
+from .models import Room
+from .realtime import realtime
+
+User = get_user_model()
+
+
+def _get_redis() -> redis.Redis:
+    return redis.Redis(
+        host=os.environ.get('REDIS_HOST', 'redis'),
+        port=int(os.environ.get('REDIS_PORT', 6379)),
+        db=2,
+        decode_responses=True,
+    )
+
+
+def _members_key(code: str) -> str:
+    return f'room:{code}:members'
+
+
+def generate_room_code(length: int = 6) -> str:
+    code = uuid.uuid4().hex[:length].upper()
+    while Room.objects.filter(code=code).exists():
+        code = uuid.uuid4().hex[:length].upper()
+    return code
 
 
 class RoomService:
+    # -- room lifecycle --------------------------------------------------
+
     def create_room(
         self,
         host: User,
-        name: str,
+        name: str = 'New Room',
         max_members: int = 8,
         scheduled_at: str | None = None,
         role_configuration: dict | None = None,
     ) -> Room:
+        code = generate_room_code()
         room = Room.objects.create(
             host=host,
             created_by=host,
             name=name,
+            code=code,
             max_members=max_members,
             scheduled_at=scheduled_at,
             role_configuration=role_configuration or {},
@@ -31,11 +60,12 @@ class RoomService:
         room.meeting_id = meeting_id
         room.save(update_fields=['meeting_id'])
 
-        RoomMember.objects.create(
-            user=host,
-            room=room,
-            added_by=RoomMember.AddedBy.HOST_DIRECT,
-        )
+        r = _get_redis()
+        try:
+            r.hset(_members_key(code), str(host.id), host.username)
+        finally:
+            r.close()
+
         return room
 
     def get_hosted_rooms(self, host: User) -> models.QuerySet[Room]:
@@ -56,113 +86,11 @@ class RoomService:
         room.save(update_fields=['status'])
         return room
 
-    def add_friend_to_room(self, room: Room, host: User, friend: User) -> Room:
-        if not room.is_host(host):
-            raise ValueError('Only the host can add members.')
-        if not room.is_waiting():
-            raise ValueError('Game already started.')
-        if RoomMember.objects.filter(user=friend, room=room).exists():
-            raise ValueError('User is already a member.')
+    # -- members ---------------------------------------------------------
 
-        with transaction.atomic():
-            room = Room.objects.select_for_update().get(pk=room.pk)
-            if room.is_full():
-                raise ValueError('Room is full.')
-            RoomMember.objects.create(
-                user=friend,
-                room=room,
-                added_by=RoomMember.AddedBy.HOST_DIRECT,
-            )
-            self._expire_pending_requests(room)
-        return room
-
-    def request_to_join(self, room: Room, user: User) -> RoomJoinRequest:
-        if not room.is_waiting():
-            raise ValueError('Room is no longer available.')
-        if RoomMember.objects.filter(user=user, room=room).exists():
-            raise ValueError('Already a member of this room.')
-        if room.is_full():
-            raise ValueError('Room is full.')
-        if RoomJoinRequest.objects.filter(
-            user=user,
-            room=room,
-            status=RoomJoinRequest.Status.PENDING,
-        ).exists():
-            raise ValueError('A pending request already exists.')
-
-        return RoomJoinRequest.objects.create(user=user, room=room)
-
-    def accept_join_request(self, request_id: int, host: User) -> Room:
-        with transaction.atomic():
-            join_req = (
-                RoomJoinRequest.objects.select_related('room')
-                .select_for_update()
-                .get(id=request_id)
-            )
-            room = Room.objects.select_for_update().get(pk=join_req.room.pk)
-
-            if not room.is_host(host):
-                raise ValueError('Only the host can accept join requests.')
-            if join_req.status != RoomJoinRequest.Status.PENDING:
-                raise ValueError('Request is not pending.')
-            if room.is_full():
-                join_req.status = RoomJoinRequest.Status.EXPIRED
-                join_req.resolved_at = timezone.now()
-                join_req.save(update_fields=['status', 'resolved_at'])
-                raise ValueError('Room is full.')
-
-            join_req.status = RoomJoinRequest.Status.ACCEPTED
-            join_req.resolved_at = timezone.now()
-            join_req.save(update_fields=['status', 'resolved_at'])
-
-            RoomMember.objects.create(
-                user=join_req.user,
-                room=room,
-                added_by=RoomMember.AddedBy.LINK_REQUEST,
-            )
-            self._expire_pending_requests(room)
-        return room
-
-    def reject_join_request(self, request_id: int, host: User) -> None:
-        join_req = RoomJoinRequest.objects.get(id=request_id)
-        if join_req.room.host != host:
-            raise ValueError('Only the host can reject join requests.')
-        if join_req.status != RoomJoinRequest.Status.PENDING:
-            raise ValueError('Request is not pending.')
-
-        join_req.status = RoomJoinRequest.Status.REJECTED
-        join_req.resolved_at = timezone.now()
-        join_req.save(update_fields=['status', 'resolved_at'])
-
-    def get_join_requests(self, room: Room) -> models.QuerySet[RoomJoinRequest]:
-        return RoomJoinRequest.objects.filter(
-            room=room,
-            status=RoomJoinRequest.Status.PENDING,
-        ).order_by('requested_at')
-
-    def get_members(self, room: Room) -> models.QuerySet[RoomMember]:
-        return RoomMember.objects.filter(room=room).order_by('joined_at')
-
-    def remove_member(self, room: Room, host: User, user_to_remove: User) -> Room:
-        if not room.is_host(host):
-            raise ValueError('Only the host can remove members.')
-        if user_to_remove == host:
-            raise ValueError('Cannot remove yourself as host.')
+    def is_member(self, code: str, user_id: int) -> bool:
+        r = _get_redis()
         try:
-            membership = RoomMember.objects.get(user=user_to_remove, room=room)
-            membership.delete()
-        except RoomMember.DoesNotExist:
-            raise ValueError('User is not a member of this room.')
-        return room
-
-    def _expire_pending_requests(self, room: Room) -> None:
-        """Auto-expire all pending join requests when room reaches max members."""
-        if not room.is_full():
-            return
-        RoomJoinRequest.objects.filter(
-            room=room,
-            status=RoomJoinRequest.Status.PENDING,
-        ).update(
-            status=RoomJoinRequest.Status.EXPIRED,
-            resolved_at=timezone.now(),
-        )
+            return r.hexists(_members_key(code), str(user_id))
+        finally:
+            r.close()
