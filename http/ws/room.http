@@ -1,0 +1,10 @@
+### Connect to Room WebSocket
+WEBSOCKET ws://localhost:8000/ws/room/7005BD/
+Content-Type: application/json
+Authorization: Bearer {{access}}
+
+{
+  "type": "ChatMessage",
+  "message": "Hey everyone!"
+}
+

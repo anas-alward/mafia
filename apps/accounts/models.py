@@ -11,3 +11,7 @@ class User(AbstractUser):
     verification_code_expiry = models.DateTimeField(null=True, default=None, blank=True)
     password_reset_hash = models.CharField(max_length=128, default='', blank=True)
     password_reset_expiry = models.DateTimeField(null=True, default=None, blank=True)
+
+    USERNAME_FIELD = 'email'
+
+    REQUIRED_FIELDS = ['username']

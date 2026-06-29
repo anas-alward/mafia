@@ -109,7 +109,8 @@ class LoginView(generics.GenericAPIView):
 
         try:
             result = AccountService().login(**serializer.validated_data)
-        except ValueError:
+        except ValueError as e:
+            print("error message ", e)
             return api_error(
                 'Invalid credentials.',
                 status=status.HTTP_401_UNAUTHORIZED,

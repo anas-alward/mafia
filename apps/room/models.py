@@ -47,5 +47,8 @@ class Room(models.Model):
     def is_waiting(self) -> bool:
         return self.status == self.Status.WAITING
 
+    def is_finished(self):
+        return self.status == self.Status.FINISHED
+
     def is_host(self, user: User) -> bool:
         return self.host_id == user.id

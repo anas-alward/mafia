@@ -35,7 +35,8 @@ class EmailAuthBackend(ModelBackend):
         if username is None or password is None:
             return None
         try:
-            user = User.objects.get(email__iexact=username.lower(), is_verified=True)
+            print("email verification: ", settings.EMAIL_VERIFICATION_ENABLED)
+            user = User.objects.get(email__iexact=username.lower(), is_verified=settings.EMAIL_VERIFICATION_ENABLED)
         except User.DoesNotExist:
             return None
         if user.check_password(password):

@@ -56,15 +56,9 @@ class RoomService:
             scheduled_at=scheduled_at,
             role_configuration=role_configuration or {},
         )
-        meeting_id = realtime.create_meeting(room.name)
-        room.meeting_id = meeting_id
-        room.save(update_fields=['meeting_id'])
-
-        r = _get_redis()
-        try:
-            r.hset(_members_key(code), str(host.id), host.username)
-        finally:
-            r.close()
+        # meeting_id = realtime.create_meeting(room.name)
+        # room.meeting_id = meeting_id
+        # room.save(update_fields=['meeting_id'])
 
         return room
 

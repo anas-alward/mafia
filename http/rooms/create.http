@@ -1,0 +1,11 @@
+### GET request to example server
+POST http://localhost:8000/api/rooms/create/
+Content-Type: application/json
+Authorization: Bearer {{access}}
+
+{
+  "name": "Anything"
+}
+###
+
+

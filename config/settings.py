@@ -203,7 +203,7 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 # Email verification
-EMAIL_VERIFICATION_ENABLED = os.environ.get('EMAIL_VERIFICATION_ENABLED', 'True').lower() in ('true', '1', 'yes')
+EMAIL_VERIFICATION_ENABLED = False # os.environ.get('EMAIL_VERIFICATION_ENABLED', 'False').lower() in ('true', '1', 'yes')
 EMAIL_VERIFICATION_TIMEOUT = timedelta(minutes=int(os.environ.get('EMAIL_VERIFICATION_TIMEOUT_MINUTES', '10')))
 PASSWORD_RESET_TIMEOUT = timedelta(hours=1)
 
