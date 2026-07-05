@@ -7,8 +7,8 @@ from typing import Any
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 
-from utils.errors import api_error
-from utils.pagination import StandardPagination
+from apps.core.utils.errors import api_error
+from apps.core.utils.pagination import StandardPagination
 
 from .models import FriendRequest
 from .serializers import (
@@ -26,7 +26,7 @@ class SendFriendRequestView(generics.GenericAPIView):
     def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         serializer = SendFriendRequestSerializer(data=request.data)
         if not serializer.is_valid():
-            from utils.errors import api_validation_error
+            from apps.core.utils.errors import api_validation_error
             return api_validation_error(
                 'Validation failed.',
                 errors=dict(serializer.errors),

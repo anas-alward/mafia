@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import pytest
+from apps.accounts.services import AccountService
 
 pytestmark = pytest.mark.django_db
 
 
 class TestAccountServiceRegister:
     def test_register_creates_user(self) -> None:
-        from apps.accounts.services import AccountService
 
         svc = AccountService()
         result = svc.register(

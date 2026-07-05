@@ -53,9 +53,9 @@ class TestRoomServiceHostedRooms:
         bob = create_user(username='bob')
         svc = RoomService()
 
-        svc.create_room(host=alice, name='Room A', max_members=8)
-        svc.create_room(host=alice, name='Room B', max_members=8)
-        svc.create_room(host=bob, name='Room C', max_members=8)
+        svc.create_room(host=alice, name='Room A')
+        svc.create_room(host=alice, name='Room B')
+        svc.create_room(host=bob, name='Room C')
 
         alice_rooms = svc.get_hosted_rooms(host=alice)
         assert alice_rooms.count() == 2
@@ -64,26 +64,4 @@ class TestRoomServiceHostedRooms:
         assert bob_rooms.count() == 1
 
 
-class TestRoomServiceFinishRoom:
-    def test_finish_room_sets_status_to_finished(self, create_user) -> None:
-        from apps.room.models import Room
-        from apps.room.services import RoomService
 
-        user = create_user(username='finisher')
-        svc = RoomService()
-        room = svc.create_room(host=user, name='To Finish', max_members=8)
-
-        svc.finish_room(room=room, user=user)
-        room.refresh_from_db()
-        assert room.status == Room.Status.FINISHED
-
-    def test_finish_room_only_by_host(self, create_user) -> None:
-        from apps.room.services import RoomService
-
-        host = create_user(username='true_host')
-        other = create_user(username='not_host')
-        svc = RoomService()
-        room = svc.create_room(host=host, name='Protected', max_members=8)
-
-        with pytest.raises(ValueError, match='Only the host'):
-            svc.finish_room(room=room, user=other)

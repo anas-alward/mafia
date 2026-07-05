@@ -3,7 +3,7 @@ POST http://127.0.0.1:8000/api/accounts/login/
 Content-Type: application/json
 
 {
-  "email": "ahmed1@gmail.com",
+  "email": "anas1@gmail.com",
   "password": "Anas775995183"
 }
 

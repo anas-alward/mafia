@@ -11,5 +11,8 @@ wheels/
 
 # Environment
 .env
+specs
+.specify
+http
 
 .idea/*

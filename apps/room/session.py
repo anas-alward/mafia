@@ -88,10 +88,7 @@ class RoomSession:
     _host_id: int | None = field(default=None, init=False, repr=False)
     _meeting_id: str | None = field(default=None, init=False, repr=False)
     _exists: bool = field(default=False, init=False, repr=False)
-
-    # Cached sets
-    _members: set[int] = field(default_factory=set, init=False, repr=False)
-    _waiting: set[int] = field(default_factory=set, init=False, repr=False)
+    _game_session_id: str | None = field(default=None, init=False, repr=False)
 
     # -------------------------
     # Properties
@@ -119,12 +116,18 @@ class RoomSession:
         return self._meeting_id
 
     @property
-    def members(self) -> set[int]:
-        return self._members.copy()
+    def game_session_id(self) -> str | None:
+        return self._game_session_id
 
-    @property
-    def waiting(self) -> set[int]:
-        return self._waiting.copy()
+    async def get_member_ids(self) -> set[int]:
+        """Query Redis directly for current member IDs."""
+        ids = await self.cache.smembers(self.members_key)
+        return {int(m) for m in ids}
+
+    async def get_waiting_ids(self) -> set[int]:
+        """Query Redis directly for current waiting user IDs."""
+        ids = await self.cache.smembers(self.waiting_key)
+        return {int(m) for m in ids}
 
     @property
     def room_key(self) -> str:
@@ -153,27 +156,41 @@ class RoomSession:
     # -------------------------
     # Host checks
     # -------------------------
-    def is_host(self, user) -> bool:
-        """Check if user is the CURRENT active host."""
-        return user.id == self._host_id
+    async def _get_host_id(self) -> int | None:
+        raw = await self.cache.hget(self.room_key, 'host_id')
+        if raw is None:
+            return self._host_id
+        return int(raw)
 
-    def is_original_host(self, user) -> bool:
-        """Check if user is the original creator of the room."""
-        return user.id == self._original_host_id
+    async def is_host(self, user) -> bool:
+        """Check if user is the CURRENT active host (reads Redis)."""
+        host_id = await self._get_host_id()
+        return user.id == host_id
 
-    def is_effective_host(self, user) -> bool:
-        """User is either original or current switched host."""
-        return user.id == self._host_id
+    async def is_original_host(self, user) -> bool:
+        """Check if user is the original creator of the room (reads Redis)."""
+        raw = await self.cache.hget(self.room_key, 'original_host_id')
+        if raw is None:
+            return user.id == self._original_host_id
+        return user.id == int(raw)
 
-    def host_is_switched(self) -> bool:
-        """Returns True if host was temporarily switched from original."""
-        return self._host_id != self._original_host_id
+    async def is_effective_host(self, user) -> bool:
+        """User is the current host (reads Redis)."""
+        host_id = await self._get_host_id()
+        return user.id == host_id
+
+    async def host_is_switched(self) -> bool:
+        """Returns True if host was temporarily switched from original (reads Redis)."""
+        host_id = await self._get_host_id()
+        raw = await self.cache.hget(self.room_key, 'original_host_id')
+        original = int(raw) if raw else self._original_host_id
+        return host_id != original
 
     # -------------------------
     # Async factory
     # -------------------------
     @classmethod
-    async def from_code(cls, code: str) -> 'RoomSession':
+    async def from_code(cls, code: str) -> RoomSession:
         session = cls(code=code)
         await session._load()
         return session
@@ -196,21 +213,6 @@ class RoomSession:
             self._populate_from_dict(data)
             self._exists = True
 
-        await self._refresh_members()
-        await self._refresh_waiting()
-
-    async def _refresh_members(self) -> None:
-        member_ids = await self.cache.smembers(self.members_key)
-        self._members = {int(m) for m in member_ids}
-
-    async def _refresh_waiting(self) -> None:
-        waiting_ids = await self.cache.smembers(self.waiting_key)
-        self._waiting = {int(m) for m in waiting_ids}
-
-    async def refresh(self) -> None:
-        await self._refresh_members()
-        await self._refresh_waiting()
-
     # -------------------------
     # Store / Invalidate
     # -------------------------
@@ -232,8 +234,7 @@ class RoomSession:
         self._name = None
         self._original_host_id = None
         self._host_id = None
-        self._members = set()
-        self._waiting = set()
+        self._game_session_id = None
 
     async def _store_room(self, data: dict[str, str]) -> None:
         await self.cache.hset(self.room_key, mapping=data)
@@ -245,6 +246,7 @@ class RoomSession:
     def _populate_from_cache(self, cached: dict[str, str]) -> None:
         self._id = int(cached['id'])
         self._name = cached['name']
+        self._game_session_id = cached.get('game_session_id')
         self._original_host_id = int(cached['original_host_id'])
         # host_id may not exist in old data — fallback to original_host_id
         self._host_id = int(cached.get('host_id', cached['original_host_id']))
@@ -256,16 +258,18 @@ class RoomSession:
         self._original_host_id = int(data['original_host_id'])
         self._host_id = int(data.get('host_id', data['original_host_id']))
         self._meeting_id = data.get('meeting_id', '')
+        self._game_session_id = data.get('game_session_id')
 
     @staticmethod
     def _room_to_dict(room: Room) -> dict[str, str]:
         return {
-            'id': str(room.id),
-            'original_host_id': str(room.host_id),  # creator is original
-            'host_id': str(room.host_id),            # starts same as original
+            'id': str(room.pk),
+            'original_host_id': str(room.host_id),
+            'host_id': str(room.host_id),
             'name': room.name,
             'code': room.code,
             'meeting_id': room.meeting_id or '',
+            'game_session_id': getattr(room, 'game_session_id', '') or '',
         }
 
     # -------------------------
@@ -276,7 +280,7 @@ class RoomSession:
         Temporarily switch host to another user (e.g., original host disconnected).
         The new host must be an approved member of the room.
         """
-        if not self.is_member(new_host_id):
+        if not await self.is_member(new_host_id):
             raise ValueError("New host must be an approved member of the room")
 
         if new_host_id == self._host_id:
@@ -325,16 +329,15 @@ class RoomSession:
         pipe.delete(self.member_key(user_id))
         await pipe.execute()
 
-        self._members.discard(user_id)
-
     # -------------------------
     # WAITING
     # -------------------------
     async def request_join(self, user: User) -> None:
-        if self.is_member(user.pk):
+        if await self.is_member(user.pk):
             raise ValueError("User is already a member")
-        if self.is_waiting(user.pk):
-            raise ValueError("User already has a pending request")
+        if await self.is_waiting(user.pk):
+            # raise ValueError("User already has a pending request")
+            return
 
         data = {
             'user_id': str(user.pk),
@@ -347,12 +350,9 @@ class RoomSession:
         pipe.hset(self.waiting_member_key(user.pk), mapping=data)
         await pipe.execute()
 
-        self._waiting.add(user.pk)
-
     async def approve_join(self, user_id: int, member_data: dict | None = None) -> None:
-        if not self.is_waiting(user_id):
-            raise ValueError("User is not in waiting list")
-
+        if not await self.is_waiting(user_id):
+            return
         pipe = self.cache.pipeline()
         pipe.srem(self.waiting_key, str(user_id))
         pipe.delete(self.waiting_member_key(user_id))
@@ -361,19 +361,14 @@ class RoomSession:
             pipe.hset(self.member_key(user_id), mapping=member_data)
         await pipe.execute()
 
-        self._waiting.discard(user_id)
-        self._members.add(user_id)
-
     async def reject_join(self, user_id: int) -> None:
         pipe = self.cache.pipeline()
         pipe.srem(self.waiting_key, str(user_id))
         pipe.delete(self.waiting_member_key(user_id))
         await pipe.execute()
 
-        self._waiting.discard(user_id)
-
     async def cancel_join_request(self, user_id: int) -> None:
-        if not self.is_waiting(user_id):
+        if not await self.is_waiting(user_id):
             raise ValueError("No pending request found")
         await self.reject_join(user_id)
 
@@ -389,11 +384,11 @@ class RoomSession:
                 result.append(details)
         return result
 
-    def is_member(self, user_id: int) -> bool:
-        return user_id in self._members
+    async def is_member(self, user_id: int) -> bool:
+        return bool(await self.cache.sismember(self.members_key, str(user_id)))
 
-    def is_waiting(self, user_id: int) -> bool:
-        return user_id in self._waiting
+    async def is_waiting(self, user_id: int) -> bool:
+        return bool(await self.cache.sismember(self.waiting_key, str(user_id)))
 
     async def add_member(self, member: RoomMember) -> None:
         pipe = self.cache.pipeline()
@@ -402,9 +397,6 @@ class RoomSession:
         pipe.delete(self.waiting_member_key(member.user_id))
         pipe.hset(self.member_key(member.user_id), mapping=member.to_dict())
         await pipe.execute()
-
-        self._members.add(member.user_id)
-        self._waiting.discard(member.user_id)
 
     async def get_member(self, user_id: int) -> RoomMember | None:
         data = await self.cache.hgetall(self.member_key(user_id))
@@ -458,3 +450,46 @@ class RoomSession:
     async def get_disconnected_members(self) -> list[RoomMember]:
         all_members = await self.list_members()
         return [m for m in all_members if m.status == MemberStatus.DISCONNECTED]
+
+
+    async def set_game_session_id(self, game_session_id: str) -> None:
+        """
+        Set the game session ID for this room.
+
+        Args:
+            game_session_id: The unique identifier for the game session
+        """
+        if not game_session_id:
+            raise ValueError("Game session ID cannot be empty")
+
+        # Update Redis
+        await self.cache.hset(self.room_key, 'game_session_id', game_session_id)
+
+        # Update local state
+        self._game_session_id = game_session_id
+
+        # Optionally, you might want to set an expiration for the game session
+        # await self.cache.expire(self.room_key, 3600)
+
+    async def clear_game_session_id(self) -> None:
+        """
+        Clear the game session ID for this room.
+        Useful when a game session ends.
+        """
+        # Update Redis - remove the field
+        await self.cache.hdel(self.room_key, 'game_session_id')
+
+        # Update local state
+        self._game_session_id = None
+
+    async def get_game_session_id(self) -> str | None:
+        """
+        Get the current game session ID.
+        This is an explicit getter that can be used alongside the property.
+        """
+        # If not loaded, try to get from cache
+        if self._game_session_id is None and self._exists:
+            cached = await self.cache.hget(self.room_key, 'game_session_id')
+            if cached:
+                self._game_session_id = cached.decode() if isinstance(cached, bytes) else cached
+        return self._game_session_id

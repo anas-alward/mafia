@@ -183,6 +183,7 @@ CHANNEL_LAYERS = {
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:4173",
+    "http://localhost:3000",
     "https://mafia.alward.dev",
 ]
 CORS_ALLOW_CREDENTIALS = True

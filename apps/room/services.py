@@ -2,64 +2,28 @@
 
 from __future__ import annotations
 
-import os
-import uuid
-
-import redis
 from django.contrib.auth import get_user_model
 from django.db import models
 
 from .models import Room
-from .realtime import realtime
+from apps.core.webrtc import webrtc_client
 
 User = get_user_model()
 
 
-def _get_redis() -> redis.Redis:
-    return redis.Redis(
-        host=os.environ.get('REDIS_HOST', 'redis'),
-        port=int(os.environ.get('REDIS_PORT', 6379)),
-        db=2,
-        decode_responses=True,
-    )
-
-
-def _members_key(code: str) -> str:
-    return f'room:{code}:members'
-
-
-def generate_room_code(length: int = 6) -> str:
-    code = uuid.uuid4().hex[:length].upper()
-    while Room.objects.filter(code=code).exists():
-        code = uuid.uuid4().hex[:length].upper()
-    return code
-
-
 class RoomService:
-    # -- room lifecycle --------------------------------------------------
-
     def create_room(
         self,
         host: User,
         name: str = 'New Room',
-        max_members: int = 8,
-        scheduled_at: str | None = None,
-        role_configuration: dict | None = None,
     ) -> Room:
-        code = generate_room_code()
         room = Room.objects.create(
             host=host,
-            created_by=host,
             name=name,
-            code=code,
-            max_members=max_members,
-            scheduled_at=scheduled_at,
-            role_configuration=role_configuration or {},
         )
-        # meeting_id = realtime.create_meeting(room.name)
-        # room.meeting_id = meeting_id
-        # room.save(update_fields=['meeting_id'])
-
+        meeting_id = webrtc_client.create_meeting(room.name)
+        room.meeting_id = meeting_id
+        room.save(update_fields=['meeting_id'])
         return room
 
     def get_hosted_rooms(self, host: User) -> models.QuerySet[Room]:
@@ -80,11 +44,3 @@ class RoomService:
         room.save(update_fields=['status'])
         return room
 
-    # -- members ---------------------------------------------------------
-
-    def is_member(self, code: str, user_id: int) -> bool:
-        r = _get_redis()
-        try:
-            return r.hexists(_members_key(code), str(user_id))
-        finally:
-            r.close()
