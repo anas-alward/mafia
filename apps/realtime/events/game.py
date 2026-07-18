@@ -98,6 +98,7 @@ class RoleAssigned(OutboundEvent):
     role_name: str
     description: str
     role_type: str
+    mafia_ids: list[int] | None = None
 
 
 class VoteCast(OutboundEvent):

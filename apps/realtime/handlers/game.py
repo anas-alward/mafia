@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from apps.game.engine.action import Action
 from apps.game.engine.constants import ActionType, Phase, PlayerStatus
+from apps.game.engine.roles.type import RoleType
 from apps.game.engine.session import GameSession
 from apps.core.utils.uuid import generate_code
 
@@ -263,13 +264,19 @@ async def game_started(consumer: RealtimeConsumer, event: dict) -> None:
     if consumer.user.id in event['player_ids']:
         game_session = await GameSession.load(room_id=consumer.code)
         if game_session is not None:
+            mafia_player_ids = [
+                p.id for p in game_session.players
+                if p.role is not None and p.role.role_type == RoleType.MAFIA
+            ]
             for player in game_session.players:
                 if player.id == consumer.user.id and player.role is not None:
+                    is_mafia = player.role.role_type == RoleType.MAFIA
                     await consumer.send_json(
                         RoleAssigned(
                             role_name=player.role.name,
                             description=player.role.description,
                             role_type=player.role.role_type.value,
+                            mafia_ids=mafia_player_ids if is_mafia else None,
                         ).to_json()
                     )
                     break
