@@ -27,6 +27,7 @@ from typing import Any
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
 from apps.core.webrtc import webrtc_client
+from apps.game.engine.session import GameSession
 from apps.room.session import MemberStatus, RoomMember, RoomSession
 
 # Importing handlers triggers all @on and @trampoline registrations.
@@ -35,6 +36,7 @@ from .dispatch import EventDispatchMixin
 from .error_codes import ErrorCode
 from .events import (
     ErrorEvent,
+    GameState,
     HostChanged,
     JoinRequestRejected,
     JoinRequestReceived,
@@ -174,6 +176,21 @@ class RealtimeConsumer(EventDispatchMixin, AsyncJsonWebsocketConsumer):
                 members=list(member_ids),
             )
         )
+
+        # Send current game state if a game is in progress.
+        game_session = await GameSession.load(room_id=self.code)
+        if game_session is not None:
+            current_round = game_session.current_round()
+            await self.send_event(
+                GameState(
+                    session_id=game_session.id,
+                    players=[p.to_dict() for p in game_session.players],
+                    current_phase=current_round.phase.value,
+                    round_number=current_round.round_number,
+                )
+            )
+        else:
+            await self.send_event(GameState())
 
         if host_regained:
             await self.groups.emit(

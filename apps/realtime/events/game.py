@@ -23,6 +23,7 @@ class GameEvents(StrEnum):
     VOTE_CAST = 'vote_cast'
     VOTE_RESULT_STARTED = 'vote_result_started'
     SUBMIT_VOTE_RESULT = 'submit_vote_result'
+    GAME_STATE = 'game_state'
 
 
 # -- Inbound ------------------------------------------------------------------
@@ -115,3 +116,11 @@ class VoteResultStarted(OutboundEvent):
 
 class SubmitVoteResult(InboundEvent):
     type: ClassVar[str] = GameEvents.SUBMIT_VOTE_RESULT
+
+
+class GameState(OutboundEvent):
+    channel_type: ClassVar[str] = GameEvents.GAME_STATE
+    session_id: str | None = None
+    players: list[dict[str, Any]] = []
+    current_phase: str | None = None
+    round_number: int | None = None
