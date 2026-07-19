@@ -51,7 +51,7 @@ class WebRTCClient:
             name=name,
         )
         return {
-            'participant_id': result.data.id,
+            'participant_id': result.data.custom_participant_id,
             'token': result.data.token,
         }
 
