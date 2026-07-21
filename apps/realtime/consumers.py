@@ -27,6 +27,8 @@ from typing import Any
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
 from apps.core.webrtc import webrtc_client
+from apps.game.engine.constants import PlayerStatus
+from apps.game.engine.roles.type import RoleType
 from apps.game.engine.session import GameSession
 from apps.room.session import MemberStatus, RoomMember, RoomSession
 
@@ -181,12 +183,52 @@ class RealtimeConsumer(EventDispatchMixin, AsyncJsonWebsocketConsumer):
         game_session = await GameSession.load(room_id=self.code)
         if game_session is not None:
             current_round = game_session.current_round()
+
+            # Public player info — no roles exposed.
+            players_public = [
+                {'id': p.id, 'code': p.code, 'status': p.status.value}
+                for p in game_session.players
+            ]
+            live_ids = [p.id for p in game_session.players if p.status == PlayerStatus.ALIVE]
+            dead_ids = [p.id for p in game_session.players if p.status == PlayerStatus.DEAD]
+
+            # Private info for the reconnecting player.
+            role_name = None
+            role_type = None
+            role_description = None
+            mafia_ids = None
+
+            my_player = next((p for p in game_session.players if p.id == self.user.id), None)
+            if my_player is not None and my_player.role is not None:
+                role_name = my_player.role.name
+                role_type = my_player.role.role_type.value
+                role_description = my_player.role.description
+                if my_player.role.role_type == RoleType.MAFIA:
+                    mafia_ids = [
+                        p.id for p in game_session.players
+                        if p.role is not None and p.role.role_type == RoleType.MAFIA
+                    ]
+
+            required_actions = current_round.get_required_actions_for_player(self.user.id)
+
+            # Round action logs (night + day).
+            logs = [a.to_dict() for a in current_round.night_actions + current_round.day_actions]
+
             await self.send_event(
                 GameState(
                     session_id=game_session.id,
-                    players=[p.to_dict() for p in game_session.players],
+                    players=players_public,
+                    live_player_ids=live_ids,
+                    dead_player_ids=dead_ids,
                     current_phase=current_round.phase.value,
                     round_number=current_round.round_number,
+                    lynch_target_id=current_round.lynch_target_id,
+                    logs=logs,
+                    role_name=role_name,
+                    role_type=role_type,
+                    role_description=role_description,
+                    mafia_ids=mafia_ids,
+                    required_actions=required_actions,
                 )
             )
         else:

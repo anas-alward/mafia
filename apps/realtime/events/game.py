@@ -132,5 +132,14 @@ class GameState(OutboundEvent):
     channel_type: ClassVar[str] = GameEvents.GAME_STATE
     session_id: str | None = None
     players: list[dict[str, Any]] = []
+    live_player_ids: list[int] = []
+    dead_player_ids: list[int] = []
     current_phase: str | None = None
     round_number: int | None = None
+    lynch_target_id: int | None = None
+    logs: list[dict[str, Any]] = []
+    role_name: str | None = None
+    role_type: str | None = None
+    role_description: str | None = None
+    mafia_ids: list[int] | None = None
+    required_actions: list[dict[str, Any]] = []
