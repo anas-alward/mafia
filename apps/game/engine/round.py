@@ -25,6 +25,10 @@ class GameRound:
     # carried out during VOTE_RESULT resolution).
     lynch_target_id: int | None = None
 
+    # Which actions each player MUST submit this phase (computed at round start).
+    # Keyed by player_id → list of required ActionTypes.  Computed, not persisted.
+    obligations: dict[int, list[ActionType]] = field(default_factory=dict)
+
     # Back-reference to the owning session, set by GameSession.new_round().
     # Excluded from serialization (it would recurse); needed so add_action /
     # resolve can trigger an autosave without the caller having to do it.
@@ -186,6 +190,93 @@ class GameRound:
 
     def alive_player_ids(self) -> set[int]:
         return {p.id for p in self.members if p.status == PlayerStatus.ALIVE}
+
+    # -------------------------
+    # OBLIGATIONS TRACKING
+    # -------------------------
+    def compute_obligations(self) -> None:
+        """Compute which players must submit which actions this phase.
+
+        Mafia KILL uses a priority chain: only the highest-priority alive
+        mafia gets KILL as a required obligation.
+        """
+        self.obligations = {}
+        phase = self.phase
+        mafia_kill_candidates: list[tuple[int, int]] = []
+
+        for player in self.members:
+            if player.role is None:
+                continue
+
+            # VOTE_RESULT: only the lynched player may have obligations.
+            if phase == Phase.VOTE_RESULT:
+                if player.id == self.lynch_target_id:
+                    role_actions = player.role.actions.get(phase, [])
+                    for cfg in role_actions:
+                        if cfg.required:
+                            self.obligations.setdefault(player.id, []).append(cfg.action_type)
+                continue
+
+            # DAY: all alive players must vote.
+            if phase == Phase.DAY:
+                if player.status == PlayerStatus.ALIVE:
+                    self.obligations[player.id] = [ActionType.VOTE]
+                continue
+
+            # NIGHT: alive players with night actions.
+            if player.status == PlayerStatus.DEAD:
+                continue
+
+            role_actions = player.role.actions.get(phase, [])
+            for cfg in role_actions:
+                if not cfg.required:
+                    continue
+                if cfg.action_type == ActionType.KILL and cfg.priority is not None:
+                    mafia_kill_candidates.append((cfg.priority, player.id))
+                else:
+                    self.obligations.setdefault(player.id, []).append(cfg.action_type)
+
+        # Resolve mafia KILL priority chain.
+        if mafia_kill_candidates:
+            mafia_kill_candidates.sort(key=lambda x: x[0])
+            chosen_id = mafia_kill_candidates[0][1]
+            self.obligations.setdefault(chosen_id, []).append(ActionType.KILL)
+
+    async def is_player_done(self, player_id: int) -> bool:
+        """True when this player has submitted all their required actions.
+
+        Merges pending Redis actions with in-memory actions, following the
+        same pattern as :meth:`voter_ids`, so this check is accurate even
+        before :meth:`resolve` runs.
+        """
+        required = self.obligations.get(player_id, [])
+        if not required:
+            return True
+
+        submitted: set[ActionType] = set()
+        actions_list = self.night_actions if self.phase == Phase.NIGHT else self.day_actions
+        for a in actions_list:
+            if a.actor_id == player_id:
+                submitted.add(a.action_type)
+
+        # Also check pending Redis actions that haven't been merged yet.
+        if self._session is not None:
+            pending_raw = await redis_client.lrange(self._session.pending_actions_key, 0, -1)
+            for raw in pending_raw:
+                a = Action.from_dict(json.loads(raw))
+                if a.actor_id == player_id:
+                    submitted.add(a.action_type)
+
+        return all(at in submitted for at in required)
+
+    async def is_round_done(self) -> bool:
+        """True when ALL obligated players have completed their required actions."""
+        if not self.obligations:
+            return True
+        for pid in self.obligations:
+            if not await self.is_player_done(pid):
+                return False
+        return True
 
     async def voter_ids(self) -> set[int]:
         """Return the set of actor IDs who have voted this round.

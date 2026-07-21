@@ -52,6 +52,7 @@ class GameSession:
             phase=phase,
             _session=self,
         )
+        round_.compute_obligations()
         self.rounds.append(round_)
         await self.save()
         return round_
@@ -80,6 +81,8 @@ class GameSession:
             key_prefix=key_prefix,
         )
         session.rounds = [GameRound.from_dict(r, session=session) for r in data['rounds']]
+        for r in session.rounds:
+            r.compute_obligations()
         return session
 
     # -------------------------
