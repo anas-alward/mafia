@@ -1,4 +1,5 @@
 import json
+import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -254,15 +255,13 @@ class GameRound:
     # -------------------------
     def start_grace(self) -> None:
         """Begin the grace period for optional actions."""
-        import time
-        self.grace_started_at = time.monotonic()
+        self.grace_started_at = time.time()
 
     def is_grace_expired(self) -> bool:
         """True if grace period has elapsed since start_grace was called."""
-        import time
         if self.grace_started_at is None:
             return False
-        return (time.monotonic() - self.grace_started_at) >= GRACE_SECONDS
+        return (time.time() - self.grace_started_at) >= GRACE_SECONDS
 
     # -------------------------
     # TARGET OPTIONS
