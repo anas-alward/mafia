@@ -23,6 +23,8 @@ class GameEvents(StrEnum):
     VOTE_CAST = 'vote_cast'
     VOTE_RESULT_STARTED = 'vote_result_started'
     SUBMIT_VOTE_RESULT = 'submit_vote_result'
+    ROLEBLOCK = 'roleblock'
+    SUBMIT_NIGHT = 'submit_night'
     GAME_STATE = 'game_state'
 
 
@@ -70,6 +72,11 @@ class SubmitVotes(InboundEvent):
 class Silent(InboundEvent):
     type: ClassVar[str] = GameEvents.SILENT
     target_id: int | None = None
+
+
+class Roleblock(InboundEvent):
+    type: ClassVar[str] = GameEvents.ROLEBLOCK
+    target_id: int
 
 
 # -- Outbound -----------------------------------------------------------------

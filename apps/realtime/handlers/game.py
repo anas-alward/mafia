@@ -10,7 +10,7 @@ Each outbound trampoline: @trampoline('type_string'), signature (consumer, event
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from apps.game.engine.action import Action
 from apps.game.engine.constants import ActionType, Phase, PlayerStatus
@@ -29,6 +29,7 @@ from ..events.game import (
     Kill,
     Revenge,
     RoleAssigned,
+    Roleblock,
     Shoot,
     Silent,
     StartGame,
@@ -177,6 +178,19 @@ async def handle_silent(consumer: RealtimeConsumer, event: Silent) -> None:
     await _try_auto_transition_night(consumer, game_session)
 
 
+@on(Roleblock)
+async def handle_roleblock(consumer: RealtimeConsumer, event: Roleblock) -> None:
+    if not await _guard_phase(consumer, Phase.NIGHT):
+        return
+    game_session = await _require_game(consumer)
+    if game_session is None:
+        return
+    await game_session.current_round().add_action(
+        Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.ROLEBLOCK)
+    )
+    await _try_auto_transition_night(consumer, game_session)
+
+
 @on(SubmitVotes)
 async def handle_submit_votes(consumer: RealtimeConsumer, event: SubmitVotes) -> None:
     """Resolve the DAY voting round and transition to the next phase.
@@ -294,15 +308,33 @@ async def game_started(consumer: RealtimeConsumer, event: dict) -> None:
 
 @trampoline(GameEvents.SUN_SET)
 async def sun_set(consumer: RealtimeConsumer, event: dict) -> None:
+    game_session = await GameSession.load(room_id=consumer.code)
+    required_actions: list[dict[str, Any]] = []
+    if game_session is not None:
+        round_ = game_session.current_round()
+        required_actions = round_.get_required_actions_for_player(consumer.user.id)
     await consumer.send_json(
-        SunSet(player_ids=event['player_ids'], logs=event.get('logs', [])).to_json()
+        SunSet(
+            player_ids=event['player_ids'],
+            logs=event.get('logs', []),
+            required_actions=required_actions,
+        ).to_json()
     )
 
 
 @trampoline(GameEvents.SUN_RISE)
 async def sun_rise(consumer: RealtimeConsumer, event: dict) -> None:
+    game_session = await GameSession.load(room_id=consumer.code)
+    required_actions: list[dict[str, Any]] = []
+    if game_session is not None:
+        round_ = game_session.current_round()
+        required_actions = round_.get_required_actions_for_player(consumer.user.id)
     await consumer.send_json(
-        SunRise(player_ids=event['player_ids'], logs=event.get('logs', [])).to_json()
+        SunRise(
+            player_ids=event['player_ids'],
+            logs=event.get('logs', []),
+            required_actions=required_actions,
+        ).to_json()
     )
 
 
@@ -315,10 +347,16 @@ async def vote_cast(consumer: RealtimeConsumer, event: dict) -> None:
 
 @trampoline(GameEvents.VOTE_RESULT_STARTED)
 async def vote_result_started(consumer: RealtimeConsumer, event: dict) -> None:
+    game_session = await GameSession.load(room_id=consumer.code)
+    required_actions: list[dict[str, Any]] = []
+    if game_session is not None:
+        round_ = game_session.current_round()
+        required_actions = round_.get_required_actions_for_player(consumer.user.id)
     await consumer.send_json(
         VoteResultStarted(
             lynch_target_id=event['lynch_target_id'],
             logs=event.get('logs', []),
+            required_actions=required_actions,
         ).to_json()
     )
 
