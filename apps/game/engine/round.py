@@ -11,6 +11,8 @@ from .player import Player
 if TYPE_CHECKING:
     from .session import GameSession
 
+GRACE_SECONDS: float = 5.0
+
 @dataclass
 class GameRound:
     round_number: int
@@ -28,6 +30,11 @@ class GameRound:
     # Which actions each player MUST submit this phase (computed at round start).
     # Keyed by player_id → list of required ActionTypes.  Computed, not persisted.
     obligations: dict[int, list[ActionType]] = field(default_factory=dict)
+
+    # Grace timer — set when all required night actions are in and the
+    # 5-second optional-action window begins.  Persisted so it survives
+    # server restarts during the grace window.
+    grace_started_at: float | None = field(default=None, repr=False)
 
     # Back-reference to the owning session, set by GameSession.new_round().
     # Excluded from serialization (it would recurse); needed so add_action /
@@ -242,6 +249,58 @@ class GameRound:
             chosen_id = mafia_kill_candidates[0][1]
             self.obligations.setdefault(chosen_id, []).append(ActionType.KILL)
 
+    # -------------------------
+    # GRACE TIMER
+    # -------------------------
+    def start_grace(self) -> None:
+        """Begin the grace period for optional actions."""
+        import time
+        self.grace_started_at = time.monotonic()
+
+    def is_grace_expired(self) -> bool:
+        """True if grace period has elapsed since start_grace was called."""
+        import time
+        if self.grace_started_at is None:
+            return False
+        return (time.monotonic() - self.grace_started_at) >= GRACE_SECONDS
+
+    # -------------------------
+    # TARGET OPTIONS
+    # -------------------------
+    def get_required_actions_for_player(self, player_id: int) -> list[dict]:
+        """Return the list of required actions with target_options for a player.
+
+        Each entry: {'action_type': str, 'target_options': list[int]}
+        """
+        required_types = self.obligations.get(player_id, [])
+        if not required_types:
+            return []
+
+        result = []
+        for at in required_types:
+            result.append({
+                'action_type': at.value,
+                'target_options': self._target_options_for(player_id, at),
+            })
+        return result
+
+    def _target_options_for(self, actor_id: int, action_type: ActionType) -> list[int]:
+        """Return valid target player IDs for a given action type."""
+        if action_type == ActionType.REVENGE:
+            # Can target any alive player (the Bomb takes someone with them).
+            return [p.id for p in self.members if p.status == PlayerStatus.ALIVE]
+        if action_type == ActionType.KILL:
+            # Mafia cannot target other mafia.
+            actor = self._get_player(actor_id)
+            if actor and actor.role:
+                return [
+                    p.id for p in self.members
+                    if p.status == PlayerStatus.ALIVE
+                    and (p.role is None or p.role.role_type != actor.role.role_type)
+                ]
+        # Default: any alive player.
+        return [p.id for p in self.members if p.status == PlayerStatus.ALIVE]
+
     async def is_player_done(self, player_id: int) -> bool:
         """True when this player has submitted all their required actions.
 
@@ -311,6 +370,7 @@ class GameRound:
             'day_actions': [a.to_dict() for a in self.day_actions],
             'phase': self.phase.value,
             'lynch_target_id': self.lynch_target_id,
+            'grace_started_at': self.grace_started_at,
         }
 
     @classmethod
@@ -322,5 +382,6 @@ class GameRound:
             day_actions=[Action.from_dict(a) for a in data['day_actions']],
             phase=Phase(data['phase']),
             lynch_target_id=data.get('lynch_target_id'),
+            grace_started_at=data.get('grace_started_at'),
             _session=session,
         )
