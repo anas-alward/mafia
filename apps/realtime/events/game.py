@@ -78,12 +78,14 @@ class SunSet(OutboundEvent):
     channel_type: ClassVar[str] = GameEvents.SUN_SET
     player_ids: list[int]
     logs: list[dict[str, Any]]
+    required_actions: list[dict[str, Any]] = []
 
 
 class SunRise(OutboundEvent):
     channel_type: ClassVar[str] = GameEvents.SUN_RISE
     player_ids: list[int]
     logs: list[dict[str, Any]]
+    required_actions: list[dict[str, Any]] = []
 
 
 class GameStarted(OutboundEvent):
@@ -112,6 +114,7 @@ class VoteResultStarted(OutboundEvent):
     channel_type: ClassVar[str] = GameEvents.VOTE_RESULT_STARTED
     lynch_target_id: int
     logs: list[dict[str, Any]]
+    required_actions: list[dict[str, Any]] = []
 
 
 class SubmitVoteResult(InboundEvent):
