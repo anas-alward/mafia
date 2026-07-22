@@ -46,7 +46,7 @@ from .events import (
     PlayerLeft,
     RoomState,
 )
-from .groups import GameSessionGroup, RoomActive, RoomPending
+from .groups import GameSessionGroup, GameSessionRole, RoomActive, RoomPending
 from .membership import GroupMembership
 from django.core.exceptions import PermissionDenied
 
@@ -208,6 +208,13 @@ class RealtimeConsumer(EventDispatchMixin, AsyncJsonWebsocketConsumer):
                         p.id for p in game_session.players
                         if p.role is not None and p.role.role_type == RoleType.MAFIA
                     ]
+                    await self.groups.join(
+                        GameSessionRole(
+                            room_code=self.code,
+                            session_id=game_session.id,
+                            role_type=RoleType.MAFIA.value,
+                        )
+                    )
 
             required_actions = current_round.get_required_actions_for_player(self.user.id)
 

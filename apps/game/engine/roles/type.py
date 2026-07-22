@@ -17,7 +17,7 @@ class BaseRole:
 
 class TownDoctor(BaseRole):
     role_type = RoleType.TOWN
-    name = "Emerald Medic"
+    name = "Doctor"
     description = "Protects one player from being eliminated each night."
     actions = {
         Phase.NIGHT: [
@@ -31,7 +31,7 @@ class TownDoctor(BaseRole):
 
 class TownCop(BaseRole):
     role_type = RoleType.TOWN
-    name = "Indigo Investigator"
+    name = "Detective"
     description = "Investigates one player each night to learn their alignment."
     actions = {
         Phase.NIGHT: [
@@ -84,7 +84,7 @@ class TownVanilla(BaseRole):
 
 class MafiaGodfather(BaseRole):
     role_type = RoleType.MAFIA
-    name = "Obsidian Overlord"
+    name = "Mafia King"
     description = "The leader of the Mafia. Appears as 'Town' if investigated by the Cop."
     actions = {
         Phase.NIGHT: [
@@ -98,7 +98,7 @@ class MafiaGodfather(BaseRole):
 
 class MafiaRoleblocker(BaseRole):
     role_type = RoleType.MAFIA
-    name = "Scarlet Silencer"
+    name = "Mafia Silencer"
     description = "Blocks one player each night, preventing them from using their action."
     actions = {
         Phase.NIGHT: [

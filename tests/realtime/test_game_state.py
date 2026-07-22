@@ -53,7 +53,7 @@ class TestGameStateEvent:
             round_number=3,
             lynch_target_id=None,
             logs=[{'actor_id': 1, 'target_id': 2, 'action_type': 'kill'}],
-            role_name='Obsidian Overlord',
+            role_name='Mafia King',
             role_type='mafia',
             role_description='The leader of the Mafia.',
             mafia_ids=[1, 4],
@@ -69,7 +69,7 @@ class TestGameStateEvent:
         assert payload['round_number'] == 3
         assert payload['lynch_target_id'] is None
         assert len(payload['logs']) == 1
-        assert payload['role_name'] == 'Obsidian Overlord'
+        assert payload['role_name'] == 'Mafia King'
         assert payload['role_type'] == 'mafia'
         assert payload['mafia_ids'] == [1, 4]
         assert len(payload['required_actions']) == 1
@@ -140,7 +140,7 @@ class TestReconnectionPayload:
         ]
         my_player = next(p for p in players if p.id == 1)
         assert my_player.role is not None
-        assert my_player.role.name == 'Scarlet Silencer'
+        assert my_player.role.name == 'Mafia Silencer'
         assert my_player.role.role_type.value == 'mafia'
         assert 'Blocks one player' in my_player.role.description
 

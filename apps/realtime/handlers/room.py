@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from apps.core.webrtc import webrtc_client
 from apps.room.session import RoomMember
 
+from .decorators import is_host
 from ..dispatch import on, trampoline
 from ..error_codes import ErrorCode
 from ..events import (
@@ -44,9 +45,8 @@ if TYPE_CHECKING:
 
 
 @on(AcceptJoinRequest)
+@is_host
 async def handle_accept_join_request(consumer, event: AcceptJoinRequest) -> None:
-    if not await consumer.session.is_host(consumer.user):
-        return
     user_id = event.user_id
     await consumer.session.approve_join(user_id)
     await consumer.groups.emit(
@@ -72,9 +72,8 @@ async def handle_reject_join_request(consumer: RealtimeConsumer, event: RejectJo
 
 
 @on(CloseRoom)
+@is_host
 async def handle_close_room(consumer, event: CloseRoom) -> None:
-    if not await consumer.session.is_host(consumer.user):
-        return
     await consumer.groups.emit(
         RoomActive(room_code=consumer.code),
         RoomClosed(room_code=consumer.code),

@@ -14,11 +14,17 @@ from typing import TYPE_CHECKING, Any
 
 from apps.game.engine.action import Action
 from apps.game.engine.constants import ActionType, Phase, PlayerStatus
-from apps.game.engine.roles.type import RoleType
+from apps.game.engine.roles.type import (
+    MafiaGodfather,
+    MafiaMember,
+    MafiaRoleblocker,
+    RoleType, TownDoctor,
+)
 from apps.game.engine.round import GRACE_SECONDS
 from apps.game.engine.session import GameSession
 from apps.core.utils.uuid import generate_code
 
+from .decorators import is_host, require_phase, require_role, is_alive
 from ..dispatch import on, trampoline
 from ..error_codes import ErrorCode
 from ..events.game import (
@@ -27,6 +33,7 @@ from ..events.game import (
     GameStarted,
     Heal,
     Kill,
+    NightAction,
     Revenge,
     RoleAssigned,
     Roleblock,
@@ -41,7 +48,7 @@ from ..events.game import (
     VoteCast,
     VoteResultStarted,
 )
-from ..groups import GameSessionGroup, RoomActive
+from ..groups import GameSessionGroup, GameSessionRole, RoomActive
 
 if TYPE_CHECKING:
     from ..consumers import RealtimeConsumer
@@ -53,10 +60,9 @@ if TYPE_CHECKING:
 
 
 @on(StartGame)
+@is_host
 async def handle_start_game(consumer: RealtimeConsumer, event: StartGame) -> None:
     session = consumer.session
-    if not await session.is_host(consumer.user):
-        return
     player_ids = event.player_ids
     if len(player_ids) < 6:
         await consumer.send_error(ErrorCode.INVALID_PAYLOAD, 'At least 6 players are required to start a game')
@@ -85,12 +91,8 @@ async def handle_start_game(consumer: RealtimeConsumer, event: StartGame) -> Non
 
 
 @on(Vote)
-async def handle_vote(consumer: RealtimeConsumer, event: Vote) -> None:
-    if not await _guard_phase(consumer, Phase.DAY):
-        return
-    game_session = await _require_game(consumer)
-    if game_session is None:
-        return
+@require_phase(Phase.DAY)
+async def handle_vote(consumer: RealtimeConsumer, event: Vote, game_session: GameSession) -> None:
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.VOTE)
     )
@@ -101,37 +103,41 @@ async def handle_vote(consumer: RealtimeConsumer, event: Vote) -> None:
 
 
 @on(Kill)
-async def handle_kill(consumer: RealtimeConsumer, event: Kill) -> None:
-    if not await _guard_phase(consumer, Phase.NIGHT):
-        return
-    game_session = await _require_game(consumer)
-    if game_session is None:
-        return
+@require_phase(Phase.NIGHT)
+@require_role(MafiaGodfather, MafiaRoleblocker, MafiaMember)
+async def handle_kill(consumer: RealtimeConsumer, event: Kill, game_session: GameSession) -> None:
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.KILL)
+    )
+    await consumer.groups.emit(
+        GameSessionRole(
+            room_code=consumer.code,
+            session_id=game_session.id,
+            role_type=RoleType.MAFIA.value,
+        ),
+        NightAction(
+            actor_id=consumer.user.id,
+            target_id=event.target_id,
+            action_type=ActionType.KILL.value,
+        ),
     )
     await _try_auto_transition_night(consumer, game_session)
 
 
 @on(Revenge)
-async def handle_revenge(consumer: RealtimeConsumer, event: Revenge) -> None:
-    if not await _guard_phase(consumer, Phase.VOTE_RESULT):
-        return
-    game_session = await _require_game(consumer)
-    if game_session is None:
-        return
+
+@require_phase(Phase.VOTE_RESULT)
+async def handle_revenge(consumer: RealtimeConsumer, event: Revenge, game_session: GameSession) -> None:
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.REVENGE)
     )
 
 
 @on(Heal)
-async def handle_heal(consumer: RealtimeConsumer, event: Heal) -> None:
-    if not await _guard_phase(consumer, Phase.NIGHT):
-        return
-    game_session = await _require_game(consumer)
-    if game_session is None:
-        return
+@require_phase(Phase.NIGHT)
+@require_role(TownDoctor)
+@is_alive
+async def handle_heal(consumer: RealtimeConsumer, event: Heal, game_session: GameSession) -> None:
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.HEAL)
     )
@@ -139,12 +145,9 @@ async def handle_heal(consumer: RealtimeConsumer, event: Heal) -> None:
 
 
 @on(Shoot)
-async def handle_shoot(consumer: RealtimeConsumer, event: Shoot) -> None:
-    if not await _guard_phase(consumer, Phase.NIGHT):
-        return
-    game_session = await _require_game(consumer)
-    if game_session is None:
-        return
+@require_phase(Phase.NIGHT)
+@is_alive
+async def handle_shoot(consumer: RealtimeConsumer, event: Shoot, game_session: GameSession) -> None:
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.SHOOT)
     )
@@ -152,12 +155,9 @@ async def handle_shoot(consumer: RealtimeConsumer, event: Shoot) -> None:
 
 
 @on(Detect)
-async def handle_detect(consumer: RealtimeConsumer, event: Detect) -> None:
-    if not await _guard_phase(consumer, Phase.NIGHT):
-        return
-    game_session = await _require_game(consumer)
-    if game_session is None:
-        return
+@require_phase(Phase.NIGHT)
+@is_alive
+async def handle_detect(consumer: RealtimeConsumer, event: Detect, game_session: GameSession) -> None:
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.DETECT)
     )
@@ -165,13 +165,10 @@ async def handle_detect(consumer: RealtimeConsumer, event: Detect) -> None:
 
 
 @on(Silent)
-async def handle_silent(consumer: RealtimeConsumer, event: Silent) -> None:
+@require_phase(Phase.NIGHT)
+@is_alive
+async def handle_silent(consumer: RealtimeConsumer, event: Silent, game_session: GameSession) -> None:
     """Player explicitly skips their night action."""
-    if not await _guard_phase(consumer, Phase.NIGHT):
-        return
-    game_session = await _require_game(consumer)
-    if game_session is None:
-        return
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.SILENT)
     )
@@ -179,39 +176,38 @@ async def handle_silent(consumer: RealtimeConsumer, event: Silent) -> None:
 
 
 @on(Roleblock)
-async def handle_roleblock(consumer: RealtimeConsumer, event: Roleblock) -> None:
-    if not await _guard_phase(consumer, Phase.NIGHT):
-        return
-    game_session = await _require_game(consumer)
-    if game_session is None:
-        return
+@require_phase(Phase.NIGHT)
+@require_role(MafiaRoleblocker)
+@is_alive
+async def handle_roleblock(consumer: RealtimeConsumer, event: Roleblock, game_session: GameSession) -> None:
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.ROLEBLOCK)
+    )
+    await consumer.groups.emit(
+        GameSessionRole(
+            room_code=consumer.code,
+            session_id=game_session.id,
+            role_type=RoleType.MAFIA.value,
+        ),
+        NightAction(
+            actor_id=consumer.user.id,
+            target_id=event.target_id,
+            action_type=ActionType.ROLEBLOCK.value,
+        ),
     )
     await _try_auto_transition_night(consumer, game_session)
 
 
 @on(SubmitVotes)
-async def handle_submit_votes(consumer: RealtimeConsumer, event: SubmitVotes) -> None:
+@is_host
+@require_phase(Phase.DAY)
+async def handle_submit_votes(consumer: RealtimeConsumer, event: SubmitVotes, game_session: GameSession) -> None:
     """Resolve the DAY voting round and transition to the next phase.
 
     DAY → resolve → if lynch target → VoteResultStarted → new round (vote_result)
                    → if no lynch target → SunSet → new round (night)
     """
-    if not await consumer.session.is_host(consumer.user):
-        return
-    game_session = await _require_game(consumer)
-    if game_session is None:
-        return
-
     round_ = game_session.current_round()
-
-    if round_.phase != Phase.DAY:
-        await consumer.send_error(
-            ErrorCode.WRONG_PHASE,
-            'SubmitVotes is only allowed during the day phase',
-        )
-        return
 
     alive = round_.alive_player_ids()
     voters = await round_.voter_ids()
@@ -228,7 +224,7 @@ async def handle_submit_votes(consumer: RealtimeConsumer, event: SubmitVotes) ->
     group = GameSessionGroup(room_code=consumer.code, session_id=session_id)
 
     # DAY with a lynch target → transition to VOTE_RESULT phase.
-    if round_.phase == Phase.DAY and round_.lynch_target_id is not None:
+    if round_.lynch_target_id is not None:
         await game_session.new_round(phase=Phase.VOTE_RESULT)
         await consumer.groups.emit(
             group,
@@ -240,22 +236,11 @@ async def handle_submit_votes(consumer: RealtimeConsumer, event: SubmitVotes) ->
 
 
 @on(SubmitVoteResult)
-async def handle_submit_vote_result(consumer: RealtimeConsumer, event: SubmitVoteResult) -> None:
+@is_host
+@require_phase(Phase.VOTE_RESULT)
+async def handle_submit_vote_result(consumer: RealtimeConsumer, event: SubmitVoteResult, game_session: GameSession) -> None:
     """Resolve the VOTE_RESULT phase: carry out lynch + revenge, then start night."""
-    if not await consumer.session.is_host(consumer.user):
-        return
-    game_session = await _require_game(consumer)
-    if game_session is None:
-        return
-
     round_ = game_session.current_round()
-    if round_.phase != Phase.VOTE_RESULT:
-        await consumer.send_error(
-            ErrorCode.WRONG_PHASE,
-            'This action is only allowed during the vote result phase',
-        )
-        return
-
     logs = await round_.resolve()
     group = GameSessionGroup(room_code=consumer.code, session_id=game_session.id)
     await _transition_after_resolve(game_session, round_, logs, consumer, group)
@@ -272,35 +257,49 @@ async def game_started(consumer: RealtimeConsumer, event: dict) -> None:
         await consumer.groups.join(
             GameSessionGroup(room_code=consumer.code, session_id=event['session_id'])
         )
+    required_actions: list[dict[str, Any]] = []
+    game_session = None
+    if consumer.user.id in event['player_ids']:
+        game_session = await GameSession.load(room_id=consumer.code)
+        if game_session is not None:
+            round_ = game_session.current_round()
+            required_actions = round_.get_required_actions_for_player(consumer.user.id)
     await consumer.send_json(
         GameStarted(
             player_ids=event['player_ids'],
             session_id=event['session_id'],
             host=event['host'],
             alive_ids=event['alive_ids'],
+            required_actions=required_actions,
         ).to_json()
     )
     # Send each player their assigned role privately, then the initial
     # SunRise so they enter the first day phase (voting).
-    if consumer.user.id in event['player_ids']:
-        game_session = await GameSession.load(room_id=consumer.code)
-        if game_session is not None:
-            mafia_player_ids = [
-                p.id for p in game_session.players
-                if p.role is not None and p.role.role_type == RoleType.MAFIA
-            ]
-            for player in game_session.players:
-                if player.id == consumer.user.id and player.role is not None:
-                    is_mafia = player.role.role_type == RoleType.MAFIA
-                    await consumer.send_json(
-                        RoleAssigned(
-                            role_name=player.role.name,
-                            description=player.role.description,
-                            role_type=player.role.role_type.value,
-                            mafia_ids=mafia_player_ids if is_mafia else None,
-                        ).to_json()
+    if game_session is not None:
+        mafia_player_ids = [
+            p.id for p in game_session.players
+            if p.role is not None and p.role.role_type == RoleType.MAFIA
+        ]
+        for player in game_session.players:
+            if player.id == consumer.user.id and player.role is not None:
+                is_mafia = player.role.role_type == RoleType.MAFIA
+                await consumer.send_json(
+                    RoleAssigned(
+                        role_name=player.role.name,
+                        description=player.role.description,
+                        role_type=player.role.role_type.value,
+                        mafia_ids=mafia_player_ids if is_mafia else None,
+                    ).to_json()
+                )
+                if is_mafia:
+                    await consumer.groups.join(
+                        GameSessionRole(
+                            room_code=consumer.code,
+                            session_id=game_session.id,
+                            role_type=RoleType.MAFIA.value,
+                        )
                     )
-                    break
+                break
         await consumer.send_json(
             SunRise(player_ids=event['alive_ids'], logs=[]).to_json()
         )
@@ -342,6 +341,17 @@ async def sun_rise(consumer: RealtimeConsumer, event: dict) -> None:
 async def vote_cast(consumer: RealtimeConsumer, event: dict) -> None:
     await consumer.send_json(
         VoteCast(actor_id=event['actor_id'], target_id=event['target_id']).to_json()
+    )
+
+
+@trampoline(GameEvents.NIGHT_ACTION)
+async def night_action(consumer: RealtimeConsumer, event: dict) -> None:
+    await consumer.send_json(
+        NightAction(
+            actor_id=event['actor_id'],
+            target_id=event.get('target_id'),
+            action_type=event['action_type'],
+        ).to_json()
     )
 
 
@@ -405,14 +415,6 @@ async def _resolve_after_grace(
     await _transition_after_resolve(fresh, round_, logs, consumer, group)
 
 
-async def _require_game(consumer: RealtimeConsumer) -> GameSession | None:
-    game_session = await GameSession.load(room_id=consumer.code)
-    if game_session is None:
-        await consumer.send_error(ErrorCode.GAME_NOT_STARTED, 'No game in progress')
-        return None
-    return game_session
-
-
 async def _transition_after_resolve(
     game_session: GameSession,
     round_: object,
@@ -444,18 +446,3 @@ async def _transition_after_resolve(
         alive_ids = [p.id for p in game_session.players if p.status == PlayerStatus.ALIVE]
         await consumer.groups.emit(group, SunSet(player_ids=alive_ids, logs=logs))
 
-
-async def _guard_phase(consumer: RealtimeConsumer, expected: Phase) -> bool:
-    """Return True if the current round phase matches *expected*, else send error."""
-    game_session = await GameSession.load(room_id=consumer.code)
-    if game_session is None:
-        await consumer.send_error(ErrorCode.GAME_NOT_STARTED, 'No game in progress')
-        return False
-    round_ = game_session.current_round()
-    if round_.phase != expected:
-        await consumer.send_error(
-            ErrorCode.WRONG_PHASE,
-            f'This action is only allowed during the {expected.value} phase',
-        )
-        return False
-    return True

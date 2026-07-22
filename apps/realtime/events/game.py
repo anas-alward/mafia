@@ -26,6 +26,7 @@ class GameEvents(StrEnum):
     ROLEBLOCK = 'roleblock'
     SUBMIT_NIGHT = 'submit_night'
     GAME_STATE = 'game_state'
+    NIGHT_ACTION = 'night_action'
 
 
 # -- Inbound ------------------------------------------------------------------
@@ -101,6 +102,7 @@ class GameStarted(OutboundEvent):
     session_id: str
     host: int
     alive_ids: list[int]
+    required_actions: list[dict[str, Any]] = []
 
 
 class RoleAssigned(OutboundEvent):
@@ -143,3 +145,10 @@ class GameState(OutboundEvent):
     role_description: str | None = None
     mafia_ids: list[int] | None = None
     required_actions: list[dict[str, Any]] = []
+
+
+class NightAction(OutboundEvent):
+    channel_type: ClassVar[str] = GameEvents.NIGHT_ACTION
+    actor_id: int
+    target_id: int | None = None
+    action_type: str

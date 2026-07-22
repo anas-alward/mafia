@@ -106,6 +106,23 @@ class GameSessionGroup(GroupScope):
 
 
 @dataclass(frozen=True, slots=True)
+class GameSessionRole(GroupScope):
+    """Role-based subgroup within a game session.
+
+    Used for scoped broadcasts like sending kill actions only to mafia
+    members. role_type is a RoleType enum value (e.g. 'mafia', 'town').
+    """
+
+    room_code: str
+    session_id: str
+    role_type: str
+
+    @property
+    def name(self) -> str:
+        return f'room.{self.room_code}.session.{self.session_id}.role.{self.role_type}'
+
+
+@dataclass(frozen=True, slots=True)
 class GameSessionTable(GroupScope):
     """Example of a THIRD level of nesting: a sub-table within a session.
 
