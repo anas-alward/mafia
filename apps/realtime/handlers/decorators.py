@@ -15,7 +15,7 @@ Usage (stack under @on/@trampoline, outermost first):
 from __future__ import annotations
 
 from functools import wraps
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from apps.game.engine.constants import Phase, PlayerStatus
 from apps.game.engine.roles.type import BaseRole
@@ -41,14 +41,21 @@ def is_host(fn):
     return wrapper
 
 
-async def _get_game_session(consumer: RealtimeConsumer) -> GameSession | None:
-    """Load the game session, caching it on the consumer for the request lifetime."""
-    cached = getattr(consumer, '_game_session', None)
-    if cached is not None:
-        return cached
-    gs = await GameSession.load(room_id=consumer.code)
-    consumer._game_session = gs
-    return gs
+def _extract_game_session(*args) -> GameSession | None:
+    """Return a GameSession from positional args if one was injected by an
+    outer decorator (e.g. ``@require_phase``), otherwise None."""
+    for a in args:
+        if isinstance(a, GameSession):
+            return a
+    return None
+
+
+async def _get_game_session(consumer: RealtimeConsumer, *args: Any) -> GameSession | None:
+    """Return an already-injected GameSession from *args*, or load from Redis."""
+    existing = _extract_game_session(*args)
+    if existing is not None:
+        return existing
+    return await GameSession.load(room_id=consumer.code)
 
 
 def require_phase(phase: Phase):
@@ -62,7 +69,7 @@ def require_phase(phase: Phase):
     def decorator(fn):
         @wraps(fn)
         async def wrapper(consumer: RealtimeConsumer, event, *args, **kwargs):
-            game_session = await _get_game_session(consumer)
+            game_session = await _get_game_session(consumer, *args)
             if game_session is None:
                 await consumer.send_error(
                     ErrorCode.GAME_NOT_STARTED, 'No game in progress'
@@ -88,13 +95,14 @@ def require_role(*allowed_roles: type[BaseRole]):
     Accepts role **classes** (e.g. ``MafiaGodfather``, ``TownDoctor``) and
     checks ``isinstance(player.role, allowed_roles)``.
 
-    Loads the game session independently — no stacking order dependency.
+    Reuses the game session injected by ``@require_phase`` if present;
+    otherwise loads it from Redis.
     """
 
     def decorator(fn):
         @wraps(fn)
         async def wrapper(consumer: RealtimeConsumer, event, *args, **kwargs):
-            game_session = await _get_game_session(consumer)
+            game_session = await _get_game_session(consumer, *args)
             if game_session is None:
                 await consumer.send_error(
                     ErrorCode.GAME_NOT_STARTED, 'No game in progress'
@@ -128,12 +136,13 @@ def require_role(*allowed_roles: type[BaseRole]):
 def is_alive(fn):
     """Check the consumer is alive. Dead players cannot act.
 
-    Loads the game session independently — no stacking order dependency.
+    Reuses the game session injected by ``@require_phase`` if present;
+    otherwise loads it from Redis.
     """
 
     @wraps(fn)
     async def wrapper(consumer: RealtimeConsumer, event, *args, **kwargs):
-        game_session = await _get_game_session(consumer)
+        game_session = await _get_game_session(consumer, *args)
         if game_session is None:
             await consumer.send_error(
                 ErrorCode.GAME_NOT_STARTED, 'No game in progress'

@@ -229,7 +229,7 @@ class RealtimeConsumer(EventDispatchMixin, AsyncJsonWebsocketConsumer):
                     dead_player_ids=dead_ids,
                     current_phase=current_round.phase.value,
                     round_number=current_round.round_number,
-                    lynch_target_id=current_round.lynch_target_id,
+                    lynch_target_id=getattr(current_round, 'lynch_target_id', None),
                     logs=logs,
                     role_name=role_name,
                     role_type=role_type,
