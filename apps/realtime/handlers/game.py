@@ -90,6 +90,7 @@ async def handle_start_game(consumer: RealtimeConsumer, event: StartGame) -> Non
 
 
 @on(Vote)
+@is_alive
 @require_phase(Phase.DAY)
 async def handle_vote(consumer: RealtimeConsumer, event: Vote, game_session: GameSession) -> None:
     await game_session.current_round().add_action(
@@ -103,6 +104,7 @@ async def handle_vote(consumer: RealtimeConsumer, event: Vote, game_session: Gam
 
 @on(Kill)
 @require_phase(Phase.NIGHT)
+@is_alive
 @require_role(MafiaGodfather, MafiaRoleblocker, MafiaMember)
 async def handle_kill(consumer: RealtimeConsumer, event: Kill, game_session: GameSession) -> None:
     await game_session.current_round().add_action(
@@ -124,7 +126,6 @@ async def handle_kill(consumer: RealtimeConsumer, event: Kill, game_session: Gam
 
 
 @on(Revenge)
-
 @require_phase(Phase.VOTE_RESULT)
 async def handle_revenge(consumer: RealtimeConsumer, event: Revenge, game_session: GameSession) -> None:
     await game_session.current_round().add_action(

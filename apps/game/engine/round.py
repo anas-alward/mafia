@@ -102,7 +102,7 @@ class GameRound:
         for a in self.night_actions:
             if a.action_type == ActionType.ROLEBLOCK:
                 blocked.add(a.target_id)
-                logs.append({'actor_id': a.actor_id, 'target_id': a.target_id, 'action_type': a.action_type.value})
+                logs.append({'target_id': a.target_id, 'action_type': a.action_type.value})
 
         # 2. HEAL
         for a in self.night_actions:
@@ -110,7 +110,7 @@ class GameRound:
                 if a.actor_id in blocked:
                     continue
                 healed.add(a.target_id)
-                logs.append({'actor_id': a.actor_id, 'target_id': a.target_id, 'action_type': a.action_type.value})
+                logs.append({'target_id': a.target_id, 'action_type': a.action_type.value})
 
         # 3. OFFENSIVE ACTIONS (KILL / SHOOT)
         for a in self.night_actions:
@@ -119,19 +119,19 @@ class GameRound:
                     continue
 
                 if a.target_id in healed:
-                    logs.append({'actor_id': a.actor_id, 'target_id': a.target_id, 'action_type': a.action_type.value, 'result': 'healed'})
+                    logs.append({'target_id': a.target_id, 'action_type': a.action_type.value, 'result': 'healed'})
                 else:
                     target = self._get_player(a.target_id)
                     if target:
                         target.status = PlayerStatus.DEAD
-                    logs.append({'actor_id': a.actor_id, 'target_id': a.target_id, 'action_type': a.action_type.value})
+                    logs.append({'target_id': a.target_id, 'action_type': a.action_type.value})
 
         # 4. DETECT
         for a in self.night_actions:
             if a.action_type == ActionType.DETECT:
                 if a.actor_id in blocked:
                     continue
-                logs.append({'actor_id': a.actor_id, 'target_id': a.target_id, 'action_type': a.action_type.value})
+                logs.append({'target_id': a.target_id, 'action_type': a.action_type.value})
 
         return logs
 
