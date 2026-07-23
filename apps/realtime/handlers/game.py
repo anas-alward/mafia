@@ -40,7 +40,6 @@ from ..events.game import (
     Shoot,
     Silent,
     StartGame,
-    SubmitVoteResult,
     SubmitVotes,
     SunRise,
     SunSet,
@@ -131,6 +130,7 @@ async def handle_revenge(consumer: RealtimeConsumer, event: Revenge, game_sessio
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.REVENGE)
     )
+    await _try_auto_transition_vote_result(consumer, game_session)
 
 
 @on(Heal)
@@ -225,24 +225,17 @@ async def handle_submit_votes(consumer: RealtimeConsumer, event: SubmitVotes, ga
 
     # DAY with a lynch target → transition to VOTE_RESULT phase.
     if round_.lynch_target_id is not None:
-        await game_session.new_round(phase=Phase.VOTE_RESULT)
+        vote_result_round = await game_session.new_round(phase=Phase.VOTE_RESULT)
         await consumer.groups.emit(
             group,
             VoteResultStarted(lynch_target_id=round_.lynch_target_id, logs=logs),
         )
+        # If the lynched player has no required actions (e.g. not Bomb),
+        # start the 5 s grace timer immediately.
+        if not vote_result_round.obligations:
+            await _try_auto_transition_vote_result(consumer, game_session)
         return
 
-    await _transition_after_resolve(game_session, round_, logs, consumer, group)
-
-
-@on(SubmitVoteResult)
-@is_host
-@require_phase(Phase.VOTE_RESULT)
-async def handle_submit_vote_result(consumer: RealtimeConsumer, event: SubmitVoteResult, game_session: GameSession) -> None:
-    """Resolve the VOTE_RESULT phase: carry out lynch + revenge, then start night."""
-    round_ = game_session.current_round()
-    logs = await round_.resolve()
-    group = GameSessionGroup(room_code=consumer.code, session_id=game_session.id)
     await _transition_after_resolve(game_session, round_, logs, consumer, group)
 
 
@@ -392,14 +385,15 @@ async def _try_auto_transition_night(
     await game_session.save()
 
     # Fire-and-forget: sleep grace period, then resolve.
-    asyncio.create_task(_resolve_after_grace(consumer, game_session))
+    asyncio.create_task(_resolve_after_grace(consumer, game_session, Phase.NIGHT))
 
 
 async def _resolve_after_grace(
     consumer: RealtimeConsumer,
     game_session: GameSession,
+    expected_phase: Phase,
 ) -> None:
-    """Sleep GRACE_SECONDS, then re-load and resolve the night round."""
+    """Sleep GRACE_SECONDS, then re-load and resolve the round."""
     await asyncio.sleep(GRACE_SECONDS)
 
     # Re-load from Redis to pick up any optional actions submitted during grace.
@@ -407,12 +401,28 @@ async def _resolve_after_grace(
     if fresh is None:
         return
     round_ = fresh.current_round()
-    if round_.phase != Phase.NIGHT:
+    if round_.phase != expected_phase:
         return  # already transitioned
 
     logs = await round_.resolve()
     group = GameSessionGroup(room_code=consumer.code, session_id=fresh.id)
     await _transition_after_resolve(fresh, round_, logs, consumer, group)
+
+
+async def _try_auto_transition_vote_result(
+    consumer: RealtimeConsumer,
+    game_session: GameSession,
+) -> None:
+    """Check if the VOTE_RESULT round is done. If so, start grace and auto-resolve."""
+    round_ = game_session.current_round()
+    if round_.phase != Phase.VOTE_RESULT:
+        return
+    if not await round_.is_round_done():
+        return
+
+    round_.start_grace()
+    await game_session.save()
+    asyncio.create_task(_resolve_after_grace(consumer, game_session, Phase.VOTE_RESULT))
 
 
 async def _transition_after_resolve(

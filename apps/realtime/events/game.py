@@ -126,10 +126,6 @@ class VoteResultStarted(OutboundEvent):
     required_actions: list[dict[str, Any]] = []
 
 
-class SubmitVoteResult(InboundEvent):
-    type: ClassVar[str] = GameEvents.SUBMIT_VOTE_RESULT
-
-
 class GameState(OutboundEvent):
     channel_type: ClassVar[str] = GameEvents.GAME_STATE
     session_id: str | None = None
