@@ -6,7 +6,7 @@ from apps.core.redis import redis_client
 from .constants import Phase
 from .player import Player
 from .roles.distributor import RoleDistributor
-from .round import GameRound
+from .round import ROUND_CLASSES, GameRound
 
 
 
@@ -45,13 +45,17 @@ class GameSession:
     # -------------------------
     # ROUND MANAGEMENT
     # -------------------------
-    async def new_round(self, phase: Phase = Phase.NIGHT) -> GameRound:
-        round_ = GameRound(
-            round_number=len(self.rounds) + 1,
-            members=self.players.copy(),
-            phase=phase,
-            _session=self,
-        )
+    async def new_round(self, phase: Phase = Phase.NIGHT, lynch_target_id: int | None = None) -> GameRound:
+        round_cls = ROUND_CLASSES[phase]
+        kwargs: dict = {
+            'round_number': len(self.rounds) + 1,
+            'members': self.players.copy(),
+            'phase': phase,
+            '_session': self,
+        }
+        if lynch_target_id is not None:
+            kwargs['lynch_target_id'] = lynch_target_id
+        round_ = round_cls(**kwargs)
         round_.compute_obligations()
         self.rounds.append(round_)
         await self.save()

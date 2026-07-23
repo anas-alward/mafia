@@ -226,7 +226,7 @@ async def handle_submit_votes(consumer: RealtimeConsumer, event: SubmitVotes, ga
 
     # DAY with a lynch target → transition to VOTE_RESULT phase.
     if round_.lynch_target_id is not None:
-        vote_result_round = await game_session.new_round(phase=Phase.VOTE_RESULT)
+        vote_result_round = await game_session.new_round(phase=Phase.VOTE_RESULT, lynch_target_id=round_.lynch_target_id)
         await consumer.groups.emit(
             group,
             VoteResultStarted(lynch_target_id=round_.lynch_target_id, logs=logs),

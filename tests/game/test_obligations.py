@@ -9,7 +9,7 @@ from apps.game.engine.roles.type import (
     TownDoctor,
     TownVanilla,
 )
-from apps.game.engine.round import GameRound
+from apps.game.engine.round import DayRound, NightRound
 
 
 class TestObligations:
@@ -19,7 +19,7 @@ class TestObligations:
             Player(id=2, role=TownDoctor()),
             Player(id=3, role=TownVanilla()),
         ]
-        round_ = GameRound(round_number=1, members=players, phase=Phase.NIGHT)
+        round_ = NightRound(round_number=1, members=players, phase=Phase.NIGHT)
         round_.compute_obligations()
 
         assert ActionType.KILL in round_.obligations.get(1, [])
@@ -32,7 +32,7 @@ class TestObligations:
             Player(id=2, role=MafiaRoleblocker()),  # priority 2
             Player(id=3, role=MafiaGodfather()),    # priority 1
         ]
-        round_ = GameRound(round_number=1, members=players, phase=Phase.NIGHT)
+        round_ = NightRound(round_number=1, members=players, phase=Phase.NIGHT)
         round_.compute_obligations()
 
         assert ActionType.KILL in round_.obligations.get(3, [])
@@ -45,7 +45,7 @@ class TestObligations:
             Player(id=2, role=MafiaRoleblocker(), status=PlayerStatus.ALIVE),
             Player(id=3, role=MafiaGodfather(), status=PlayerStatus.DEAD),
         ]
-        round_ = GameRound(round_number=1, members=players, phase=Phase.NIGHT)
+        round_ = NightRound(round_number=1, members=players, phase=Phase.NIGHT)
         round_.compute_obligations()
 
         assert ActionType.KILL in round_.obligations.get(2, [])
@@ -57,7 +57,7 @@ class TestObligations:
             Player(id=2, role=TownVanilla(), status=PlayerStatus.DEAD),
             Player(id=3, role=TownDoctor()),
         ]
-        round_ = GameRound(round_number=1, members=players, phase=Phase.DAY)
+        round_ = DayRound(round_number=1, members=players, phase=Phase.DAY)
         round_.compute_obligations()
 
         assert ActionType.VOTE in round_.obligations.get(1, [])
@@ -69,7 +69,7 @@ class TestObligations:
         players = [
             Player(id=1, role=TownDoctor()),
         ]
-        round_ = GameRound(round_number=1, members=players, phase=Phase.NIGHT)
+        round_ = NightRound(round_number=1, members=players, phase=Phase.NIGHT)
         round_.compute_obligations()
 
         assert not await round_.is_player_done(1)
@@ -83,7 +83,7 @@ class TestObligations:
             Player(id=1, role=MafiaGodfather()),
             Player(id=2, role=TownDoctor()),
         ]
-        round_ = GameRound(round_number=1, members=players, phase=Phase.NIGHT)
+        round_ = NightRound(round_number=1, members=players, phase=Phase.NIGHT)
         round_.compute_obligations()
         assert not await round_.is_round_done()
 

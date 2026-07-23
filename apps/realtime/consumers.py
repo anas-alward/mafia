@@ -219,7 +219,7 @@ class RealtimeConsumer(EventDispatchMixin, AsyncJsonWebsocketConsumer):
             required_actions = current_round.get_required_actions_for_player(self.user.id)
 
             # Round action logs (night + day).
-            logs = [a.to_dict() for a in current_round.night_actions + current_round.day_actions]
+            logs = [a.to_dict() for a in current_round.all_actions]
 
             await self.send_event(
                 GameState(

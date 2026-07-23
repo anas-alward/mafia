@@ -13,7 +13,7 @@ from apps.game.engine.roles.type import (
     TownDoctor,
     TownVanilla,
 )
-from apps.game.engine.round import GameRound
+from apps.game.engine.round import NightRound
 from apps.realtime.events.game import GameState
 
 
@@ -150,7 +150,7 @@ class TestReconnectionPayload:
             Player(id=2, role=MafiaGodfather()),
             Player(id=3, role=TownVanilla()),
         ]
-        round_ = GameRound(round_number=1, members=players, phase=Phase.NIGHT)
+        round_ = NightRound(round_number=1, members=players, phase=Phase.NIGHT)
         round_.compute_obligations()
 
         doctor_actions = round_.get_required_actions_for_player(1)
@@ -162,16 +162,12 @@ class TestReconnectionPayload:
         assert vanilla_actions == []
 
     def test_logs_include_round_actions(self):
-        round_ = GameRound(round_number=2, members=[], phase=Phase.NIGHT)
+        round_ = NightRound(round_number=2, members=[], phase=Phase.NIGHT)
         round_.night_actions = [
             Action(actor_id=1, target_id=2, action_type=ActionType.KILL),
             Action(actor_id=3, target_id=1, action_type=ActionType.HEAL),
         ]
-        round_.day_actions = [
-            Action(actor_id=1, target_id=2, action_type=ActionType.VOTE),
-        ]
-        logs = [a.to_dict() for a in round_.night_actions + round_.day_actions]
-        assert len(logs) == 3
+        logs = [a.to_dict() for a in round_.all_actions]
+        assert len(logs) == 2
         assert logs[0] == {'actor_id': 1, 'target_id': 2, 'action_type': 'kill'}
         assert logs[1] == {'actor_id': 3, 'target_id': 1, 'action_type': 'heal'}
-        assert logs[2] == {'actor_id': 1, 'target_id': 2, 'action_type': 'vote'}

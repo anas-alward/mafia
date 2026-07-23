@@ -1,6 +1,6 @@
 import random
 
-from apps.game.roles import (
+from .type import (
     MafiaGodfather,
     MafiaMember,
     MafiaRoleblocker,
