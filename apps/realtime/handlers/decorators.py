@@ -41,6 +41,16 @@ def is_host(fn):
     return wrapper
 
 
+async def _get_game_session(consumer: RealtimeConsumer) -> GameSession | None:
+    """Load the game session, caching it on the consumer for the request lifetime."""
+    cached = getattr(consumer, '_game_session', None)
+    if cached is not None:
+        return cached
+    gs = await GameSession.load(room_id=consumer.code)
+    consumer._game_session = gs
+    return gs
+
+
 def require_phase(phase: Phase):
     """Load the game session, verify the current round phase matches *phase*,
     and pass ``game_session`` as the third positional argument.
@@ -52,7 +62,7 @@ def require_phase(phase: Phase):
     def decorator(fn):
         @wraps(fn)
         async def wrapper(consumer: RealtimeConsumer, event, *args, **kwargs):
-            game_session = await GameSession.load(room_id=consumer.code)
+            game_session = await _get_game_session(consumer)
             if game_session is None:
                 await consumer.send_error(
                     ErrorCode.GAME_NOT_STARTED, 'No game in progress'
@@ -78,25 +88,16 @@ def require_role(*allowed_roles: type[BaseRole]):
     Accepts role **classes** (e.g. ``MafiaGodfather``, ``TownDoctor``) and
     checks ``isinstance(player.role, allowed_roles)``.
 
-    Must be stacked **under** ``@require_phase`` so ``game_session`` is
-    already injected as the third positional argument.
-
-    Usage::
-
-        @on(Kill)
-        @require_phase(Phase.NIGHT)
-        @require_role(MafiaGodfather, MafiaRoleblocker, MafiaMember)
-        async def handle_kill(consumer, event, game_session): ...
+    Loads the game session independently — no stacking order dependency.
     """
 
     def decorator(fn):
         @wraps(fn)
         async def wrapper(consumer: RealtimeConsumer, event, *args, **kwargs):
-            game_session = args[0] if args else None
+            game_session = await _get_game_session(consumer)
             if game_session is None:
                 await consumer.send_error(
-                    ErrorCode.INTERNAL_ERROR,
-                    '@require_role must be stacked under @require_phase',
+                    ErrorCode.GAME_NOT_STARTED, 'No game in progress'
                 )
                 return None
 
@@ -127,24 +128,15 @@ def require_role(*allowed_roles: type[BaseRole]):
 def is_alive(fn):
     """Check the consumer is alive. Dead players cannot act.
 
-    Must be stacked **under** ``@require_phase`` so ``game_session`` is
-    already injected as the third positional argument.
-
-    Usage::
-
-        @on(Vote)
-        @require_phase(Phase.DAY)
-        @is_alive
-        async def handle_vote(consumer, event, game_session): ...
+    Loads the game session independently — no stacking order dependency.
     """
 
     @wraps(fn)
     async def wrapper(consumer: RealtimeConsumer, event, *args, **kwargs):
-        game_session = args[0] if args else None
+        game_session = await _get_game_session(consumer)
         if game_session is None:
             await consumer.send_error(
-                ErrorCode.INTERNAL_ERROR,
-                '@is_alive must be stacked under @require_phase',
+                ErrorCode.GAME_NOT_STARTED, 'No game in progress'
             )
             return None
 
