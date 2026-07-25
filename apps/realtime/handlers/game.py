@@ -24,7 +24,7 @@ from apps.game.engine.round import GRACE_SECONDS
 from apps.game.engine.session import GameSession
 from apps.core.utils.uuid import generate_code
 
-from .decorators import is_host, require_phase, require_role, is_alive
+from .decorators import game_session, is_host, require_phase, require_role, is_alive
 from ..dispatch import on, trampoline
 from ..error_codes import ErrorCode
 from ..events.game import (
@@ -90,9 +90,10 @@ async def handle_start_game(consumer: RealtimeConsumer, event: StartGame) -> Non
 
 
 @on(Vote)
+@game_session(on_none="error")
 @is_alive
 @require_phase(Phase.DAY)
-async def handle_vote(consumer: RealtimeConsumer, event: Vote, game_session: GameSession) -> None:
+async def handle_vote(consumer: RealtimeConsumer, event: Vote, *, game_session: GameSession) -> None:
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.VOTE)
     )
@@ -103,10 +104,11 @@ async def handle_vote(consumer: RealtimeConsumer, event: Vote, game_session: Gam
 
 
 @on(Kill)
+@game_session(on_none="error")
 @require_phase(Phase.NIGHT)
 @is_alive
 @require_role(MafiaGodfather, MafiaRoleblocker, MafiaMember)
-async def handle_kill(consumer: RealtimeConsumer, event: Kill, game_session: GameSession) -> None:
+async def handle_kill(consumer: RealtimeConsumer, event: Kill, *, game_session: GameSession) -> None:
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.KILL)
     )
@@ -126,8 +128,9 @@ async def handle_kill(consumer: RealtimeConsumer, event: Kill, game_session: Gam
 
 
 @on(Revenge)
+@game_session(on_none="error")
 @require_phase(Phase.VOTE_RESULT)
-async def handle_revenge(consumer: RealtimeConsumer, event: Revenge, game_session: GameSession) -> None:
+async def handle_revenge(consumer: RealtimeConsumer, event: Revenge, *, game_session: GameSession) -> None:
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.REVENGE)
     )
@@ -135,10 +138,11 @@ async def handle_revenge(consumer: RealtimeConsumer, event: Revenge, game_sessio
 
 
 @on(Heal)
+@game_session(on_none="error")
 @require_phase(Phase.NIGHT)
 @require_role(TownDoctor)
 @is_alive
-async def handle_heal(consumer: RealtimeConsumer, event: Heal, game_session: GameSession) -> None:
+async def handle_heal(consumer: RealtimeConsumer, event: Heal, *, game_session: GameSession) -> None:
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.HEAL)
     )
@@ -146,9 +150,10 @@ async def handle_heal(consumer: RealtimeConsumer, event: Heal, game_session: Gam
 
 
 @on(Shoot)
+@game_session(on_none="error")
 @require_phase(Phase.NIGHT)
 @is_alive
-async def handle_shoot(consumer: RealtimeConsumer, event: Shoot, game_session: GameSession) -> None:
+async def handle_shoot(consumer: RealtimeConsumer, event: Shoot, *, game_session: GameSession) -> None:
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.SHOOT)
     )
@@ -156,9 +161,10 @@ async def handle_shoot(consumer: RealtimeConsumer, event: Shoot, game_session: G
 
 
 @on(Detect)
+@game_session(on_none="error")
 @require_phase(Phase.NIGHT)
 @is_alive
-async def handle_detect(consumer: RealtimeConsumer, event: Detect, game_session: GameSession) -> None:
+async def handle_detect(consumer: RealtimeConsumer, event: Detect, *, game_session: GameSession) -> None:
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.DETECT)
     )
@@ -166,9 +172,10 @@ async def handle_detect(consumer: RealtimeConsumer, event: Detect, game_session:
 
 
 @on(Silent)
+@game_session(on_none="error")
 @require_phase(Phase.NIGHT)
 @is_alive
-async def handle_silent(consumer: RealtimeConsumer, event: Silent, game_session: GameSession) -> None:
+async def handle_silent(consumer: RealtimeConsumer, event: Silent, *, game_session: GameSession) -> None:
     """Player explicitly skips their night action."""
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.SILENT)
@@ -177,10 +184,11 @@ async def handle_silent(consumer: RealtimeConsumer, event: Silent, game_session:
 
 
 @on(Roleblock)
+@game_session(on_none="error")
 @require_phase(Phase.NIGHT)
 @require_role(MafiaRoleblocker)
 @is_alive
-async def handle_roleblock(consumer: RealtimeConsumer, event: Roleblock, game_session: GameSession) -> None:
+async def handle_roleblock(consumer: RealtimeConsumer, event: Roleblock, *, game_session: GameSession) -> None:
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.ROLEBLOCK)
     )
@@ -200,9 +208,10 @@ async def handle_roleblock(consumer: RealtimeConsumer, event: Roleblock, game_se
 
 
 @on(SubmitVotes)
+@game_session(on_none="error")
 @is_host
 @require_phase(Phase.DAY)
-async def handle_submit_votes(consumer: RealtimeConsumer, event: SubmitVotes, game_session: GameSession) -> None:
+async def handle_submit_votes(consumer: RealtimeConsumer, event: SubmitVotes, *, game_session: GameSession) -> None:
     """Resolve the DAY voting round and transition to the next phase.
 
     DAY → resolve → if lynch target → VoteResultStarted → new round (vote_result)
@@ -246,18 +255,18 @@ async def handle_submit_votes(consumer: RealtimeConsumer, event: SubmitVotes, ga
 
 
 @trampoline(GameEvents.GAME_STARTED)
-async def game_started(consumer: RealtimeConsumer, event: dict) -> None:
+@game_session(on_none="continue")
+async def game_started(
+    consumer: RealtimeConsumer, event: dict, *, game_session: GameSession | None
+) -> None:
     if consumer.user.id in event['player_ids']:
         await consumer.groups.join(
             GameSessionGroup(room_code=consumer.code, session_id=event['session_id'])
         )
     required_actions: list[dict[str, Any]] = []
-    game_session = None
-    if consumer.user.id in event['player_ids']:
-        game_session = await GameSession.load(room_id=consumer.code)
-        if game_session is not None:
-            round_ = game_session.current_round()
-            required_actions = round_.get_required_actions_for_player(consumer.user.id)
+    if game_session is not None and consumer.user.id in event['player_ids']:
+        round_ = game_session.current_round()
+        required_actions = round_.get_required_actions_for_player(consumer.user.id)
     await consumer.send_json(
         GameStarted(
             player_ids=event['player_ids'],
@@ -269,7 +278,7 @@ async def game_started(consumer: RealtimeConsumer, event: dict) -> None:
     )
     # Send each player their assigned role privately, then the initial
     # SunRise so they enter the first day phase (voting).
-    if game_session is not None:
+    if game_session is not None and consumer.user.id in event['player_ids']:
         mafia_player_ids = [
             p.id for p in game_session.players
             if p.role is not None and p.role.role_type == RoleType.MAFIA
@@ -295,13 +304,13 @@ async def game_started(consumer: RealtimeConsumer, event: dict) -> None:
                     )
                 break
         await consumer.send_json(
-            SunRise(player_ids=event['alive_ids'], logs=[]).to_json()
+            SunRise(player_ids=event['alive_ids'], logs=[], required_actions=required_actions).to_json()
         )
 
 
 @trampoline(GameEvents.SUN_SET)
-async def sun_set(consumer: RealtimeConsumer, event: dict) -> None:
-    game_session = await GameSession.load(room_id=consumer.code)
+@game_session(on_none="continue")
+async def sun_set(consumer: RealtimeConsumer, event: dict, *, game_session: GameSession | None) -> None:
     required_actions: list[dict[str, Any]] = []
     if game_session is not None:
         round_ = game_session.current_round()
@@ -316,8 +325,8 @@ async def sun_set(consumer: RealtimeConsumer, event: dict) -> None:
 
 
 @trampoline(GameEvents.SUN_RISE)
-async def sun_rise(consumer: RealtimeConsumer, event: dict) -> None:
-    game_session = await GameSession.load(room_id=consumer.code)
+@game_session(on_none="continue")
+async def sun_rise(consumer: RealtimeConsumer, event: dict, *, game_session: GameSession | None) -> None:
     required_actions: list[dict[str, Any]] = []
     if game_session is not None:
         round_ = game_session.current_round()
@@ -350,8 +359,10 @@ async def night_action(consumer: RealtimeConsumer, event: dict) -> None:
 
 
 @trampoline(GameEvents.VOTE_RESULT_STARTED)
-async def vote_result_started(consumer: RealtimeConsumer, event: dict) -> None:
-    game_session = await GameSession.load(room_id=consumer.code)
+@game_session(on_none="continue")
+async def vote_result_started(
+    consumer: RealtimeConsumer, event: dict, *, game_session: GameSession | None
+) -> None:
     required_actions: list[dict[str, Any]] = []
     if game_session is not None:
         round_ = game_session.current_round()
