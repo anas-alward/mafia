@@ -166,6 +166,10 @@ class GameRound:
 
     async def _autosave(self) -> None:
         if self._session is not None:
+            member_map = {p.id: p for p in self.members}
+            for sp in self._session.players:
+                if sp.id in member_map:
+                    sp.status = member_map[sp.id].status
             await self._session.save()
 
     # ------------------------------------------------------------------
