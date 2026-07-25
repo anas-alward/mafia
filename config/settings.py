@@ -185,6 +185,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:4173",
     "http://localhost:3000",
     "https://mafia.alward.dev",
+    "https://mf.alward.dev"
 ]
 CORS_ALLOW_CREDENTIALS = True
 
