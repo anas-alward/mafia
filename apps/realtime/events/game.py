@@ -27,6 +27,10 @@ class GameEvents(StrEnum):
     SUBMIT_NIGHT = 'submit_night'
     GAME_STATE = 'game_state'
     NIGHT_ACTION = 'night_action'
+    RESET = 'reset'
+    CANCEL = 'cancel'
+    GAME_RESET = 'game_reset'
+    GAME_CANCELED = 'game_canceled'
 
 
 # -- Inbound ------------------------------------------------------------------
@@ -78,6 +82,14 @@ class Silent(InboundEvent):
 class Roleblock(InboundEvent):
     type: ClassVar[str] = GameEvents.ROLEBLOCK
     target_id: int
+
+
+class ResetGame(InboundEvent):
+    type: ClassVar[str] = GameEvents.RESET
+
+
+class CancelGame(InboundEvent):
+    type: ClassVar[str] = GameEvents.CANCEL
 
 
 # -- Outbound -----------------------------------------------------------------
@@ -148,3 +160,16 @@ class NightAction(OutboundEvent):
     actor_id: int
     target_id: int | None = None
     action_type: str
+
+
+class GameReset(OutboundEvent):
+    channel_type: ClassVar[str] = GameEvents.GAME_RESET
+    player_ids: list[int]
+    session_id: str
+    host: int
+    alive_ids: list[int]
+    required_actions: list[dict[str, Any]] = []
+
+
+class GameCanceled(OutboundEvent):
+    channel_type: ClassVar[str] = GameEvents.GAME_CANCELED

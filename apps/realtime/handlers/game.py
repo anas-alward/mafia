@@ -12,28 +12,32 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
+from apps.core.utils.uuid import generate_code
 from apps.game.engine.action import Action
 from apps.game.engine.constants import ActionType, Phase, PlayerStatus
 from apps.game.engine.roles.type import (
     MafiaGodfather,
     MafiaMember,
     MafiaRoleblocker,
-    RoleType, TownDoctor,
+    RoleType,
+    TownDoctor,
 )
 from apps.game.engine.round import GRACE_SECONDS
 from apps.game.engine.session import GameSession
-from apps.core.utils.uuid import generate_code
 
-from .decorators import game_session, is_host, require_phase, require_role, is_alive
 from ..dispatch import on, trampoline
 from ..error_codes import ErrorCode
 from ..events.game import (
+    CancelGame,
     Detect,
+    GameCanceled,
     GameEvents,
+    GameReset,
     GameStarted,
     Heal,
     Kill,
     NightAction,
+    ResetGame,
     Revenge,
     RoleAssigned,
     Roleblock,
@@ -48,6 +52,7 @@ from ..events.game import (
     VoteResultStarted,
 )
 from ..groups import GameSessionGroup, GameSessionRole, RoomActive
+from .decorators import game_session, is_alive, is_host, require_phase, require_role
 
 if TYPE_CHECKING:
     from ..consumers import RealtimeConsumer
@@ -249,6 +254,44 @@ async def handle_submit_votes(consumer: RealtimeConsumer, event: SubmitVotes, *,
     await _transition_after_resolve(game_session, round_, logs, consumer, group)
 
 
+@on(ResetGame)
+@is_host
+@game_session(on_none="error")
+async def handle_reset_game(consumer: RealtimeConsumer, event: ResetGame, *, game_session: GameSession) -> None:
+    player_ids = [p.id for p in game_session.players]
+    await game_session.flush()
+
+    game_id = generate_code(length=16)
+    new_session = await GameSession.start_new(
+        id=game_id, room_id=consumer.code, player_ids=player_ids,
+    )
+    await new_session.new_round(phase=Phase.DAY)
+    await consumer.session.set_game_session_id(game_id)
+
+    alive_ids = [p.id for p in new_session.players if p.status == PlayerStatus.ALIVE]
+    await consumer.groups.emit(
+        RoomActive(room_code=consumer.code),
+        GameReset(
+            player_ids=player_ids,
+            session_id=game_id,
+            host=consumer.user.id,
+            alive_ids=alive_ids,
+        ),
+    )
+
+
+@on(CancelGame)
+@is_host
+@game_session(on_none="error")
+async def handle_cancel_game(consumer: RealtimeConsumer, event: CancelGame, *, game_session: GameSession) -> None:
+    await game_session.flush()
+    await consumer.session.clear_game_session_id()
+    await consumer.groups.emit(
+        RoomActive(room_code=consumer.code),
+        GameCanceled(),
+    )
+
+
 # =========================================================================
 # OUTBOUND trampolines (@trampoline)
 # =========================================================================
@@ -374,6 +417,63 @@ async def vote_result_started(
             required_actions=required_actions,
         ).to_json()
     )
+
+
+@trampoline(GameEvents.GAME_RESET)
+@game_session(on_none="continue")
+async def game_reset(
+    consumer: RealtimeConsumer, event: dict, *, game_session: GameSession | None
+) -> None:
+    if consumer.user.id in event['player_ids']:
+        await consumer.groups.join(
+            GameSessionGroup(room_code=consumer.code, session_id=event['session_id'])
+        )
+    required_actions: list[dict[str, Any]] = []
+    if game_session is not None and consumer.user.id in event['player_ids']:
+        round_ = game_session.current_round()
+        required_actions = round_.get_required_actions_for_player(consumer.user.id)
+    await consumer.send_json(
+        GameReset(
+            player_ids=event['player_ids'],
+            session_id=event['session_id'],
+            host=event['host'],
+            alive_ids=event['alive_ids'],
+            required_actions=required_actions,
+        ).to_json()
+    )
+    if game_session is not None and consumer.user.id in event['player_ids']:
+        mafia_player_ids = [
+            p.id for p in game_session.players
+            if p.role is not None and p.role.role_type == RoleType.MAFIA
+        ]
+        for player in game_session.players:
+            if player.id == consumer.user.id and player.role is not None:
+                is_mafia = player.role.role_type == RoleType.MAFIA
+                await consumer.send_json(
+                    RoleAssigned(
+                        role_name=player.role.name,
+                        description=player.role.description,
+                        role_type=player.role.role_type.value,
+                        mafia_ids=mafia_player_ids if is_mafia else None,
+                    ).to_json()
+                )
+                if is_mafia:
+                    await consumer.groups.join(
+                        GameSessionRole(
+                            room_code=consumer.code,
+                            session_id=game_session.id,
+                            role_type=RoleType.MAFIA.value,
+                        )
+                    )
+                break
+        await consumer.send_json(
+            SunRise(player_ids=event['alive_ids'], logs=[], required_actions=required_actions).to_json()
+        )
+
+
+@trampoline(GameEvents.GAME_CANCELED)
+async def game_canceled(consumer: RealtimeConsumer, event: dict) -> None:
+    await consumer.send_json(GameCanceled().to_json())
 
 
 # =========================================================================
