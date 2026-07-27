@@ -119,10 +119,12 @@ class GameStarted(OutboundEvent):
 
 class RoleAssigned(OutboundEvent):
     channel_type: ClassVar[str] = GameEvents.ROLE_ASSIGNED
+    role_code: str
     role_name: str
     description: str
     role_type: str
     mafia_ids: list[int] | None = None
+    mafia_members: list[dict[str, Any]] | None = None
 
 
 class VoteCast(OutboundEvent):
@@ -148,6 +150,7 @@ class GameState(OutboundEvent):
     round_number: int | None = None
     lynch_target_id: int | None = None
     logs: list[dict[str, Any]] = []
+    role_code: str | None = None
     role_name: str | None = None
     role_type: str | None = None
     role_description: str | None = None

@@ -18,15 +18,15 @@ class Player:
             'id': self.id,
             'code': self.code,
             'status': self.status.value,
-            'role': self.role.name if self.role else None,
+            'role_code': self.role.code if self.role else None,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> Player:
-        role_name = data.get('role')
+        role_code = data.get('role_code')
         return cls(
             id=data['id'],
             code=data['code'],
             status=PlayerStatus(data['status']),
-            role=ROLE_REGISTRY.get(role_name) if role_name else None,
+            role=ROLE_REGISTRY.get(role_code) if role_code else None,
         )

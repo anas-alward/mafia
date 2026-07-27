@@ -9,6 +9,7 @@ class RoleType(StrEnum):
 
 
 class BaseRole:
+    code: str
     role_type: RoleType
     name: str
     description: str
@@ -16,6 +17,7 @@ class BaseRole:
 
 
 class TownDoctor(BaseRole):
+    code = "doctor"
     role_type = RoleType.TOWN
     name = "Doctor"
     description = "Protects one player from being eliminated each night."
@@ -30,6 +32,7 @@ class TownDoctor(BaseRole):
 
 
 class TownCop(BaseRole):
+    code = "detective"
     role_type = RoleType.TOWN
     name = "Detective"
     description = "Investigates one player each night to learn their alignment."
@@ -44,6 +47,7 @@ class TownCop(BaseRole):
 
 
 class TownVigilante(BaseRole):
+    code = "vigilante"
     role_type = RoleType.TOWN
     name = "Azure Vigilante"
     description = "Can choose to eliminate a player at night, but has limited ammo."
@@ -58,6 +62,7 @@ class TownVigilante(BaseRole):
 
 
 class TownBomb(BaseRole):
+    code = "bomb"
     role_type = RoleType.TOWN
     name = "Crimson Kamikaze"
     description = "Explodes upon death, eliminating whoever was responsible for killing them."
@@ -72,6 +77,7 @@ class TownBomb(BaseRole):
 
 
 class TownVanilla(BaseRole):
+    code = "vanilla"
     role_type = RoleType.TOWN
     name = "Vanilla Townie"
     description = "Has no special ability. Uses vote power during the day."
@@ -83,6 +89,7 @@ class TownVanilla(BaseRole):
 
 
 class MafiaGodfather(BaseRole):
+    code = "godfather"
     role_type = RoleType.MAFIA
     name = "Mafia King"
     description = "The leader of the Mafia. Appears as 'Town' if investigated by the Cop."
@@ -97,6 +104,7 @@ class MafiaGodfather(BaseRole):
 
 
 class MafiaRoleblocker(BaseRole):
+    code = "roleblocker"
     role_type = RoleType.MAFIA
     name = "Mafia Silencer"
     description = "Blocks one player each night, preventing them from using their action."
@@ -112,6 +120,7 @@ class MafiaRoleblocker(BaseRole):
 
 
 class MafiaMember(BaseRole):
+    code = "mafia_member"
     role_type = RoleType.MAFIA
     name = "Black Hand"
     description = "Basic Mafia member who participates in night kills."
@@ -136,4 +145,4 @@ ROLES: list[BaseRole] = [
     MafiaMember(),
 ]
 
-ROLE_REGISTRY: dict[str, BaseRole] = {role.name: role for role in ROLES}
+ROLE_REGISTRY: dict[str, BaseRole] = {role.code: role for role in ROLES}

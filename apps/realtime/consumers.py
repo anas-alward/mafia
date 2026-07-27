@@ -193,6 +193,7 @@ class RealtimeConsumer(EventDispatchMixin, AsyncJsonWebsocketConsumer):
             dead_ids = [p.id for p in game_session.players if p.status == PlayerStatus.DEAD]
 
             # Private info for the reconnecting player.
+            role_code = None
             role_name = None
             role_type = None
             role_description = None
@@ -200,6 +201,7 @@ class RealtimeConsumer(EventDispatchMixin, AsyncJsonWebsocketConsumer):
 
             my_player = next((p for p in game_session.players if p.id == self.user.id), None)
             if my_player is not None and my_player.role is not None:
+                role_code = my_player.role.code
                 role_name = my_player.role.name
                 role_type = my_player.role.role_type.value
                 role_description = my_player.role.description
@@ -231,6 +233,7 @@ class RealtimeConsumer(EventDispatchMixin, AsyncJsonWebsocketConsumer):
                     round_number=current_round.round_number,
                     lynch_target_id=getattr(current_round, 'lynch_target_id', None),
                     logs=logs,
+                    role_code=role_code,
                     role_name=role_name,
                     role_type=role_type,
                     role_description=role_description,

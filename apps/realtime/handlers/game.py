@@ -322,19 +322,26 @@ async def game_started(
     # Send each player their assigned role privately, then the initial
     # SunRise so they enter the first day phase (voting).
     if game_session is not None and consumer.user.id in event['player_ids']:
-        mafia_player_ids = [
-            p.id for p in game_session.players
+        mafia_players = [
+            p for p in game_session.players
             if p.role is not None and p.role.role_type == RoleType.MAFIA
+        ]
+        mafia_player_ids = [p.id for p in mafia_players]
+        mafia_members = [
+            {'id': p.id, 'role_code': p.role.code, 'role_name': p.role.name}
+            for p in mafia_players if p.role is not None
         ]
         for player in game_session.players:
             if player.id == consumer.user.id and player.role is not None:
                 is_mafia = player.role.role_type == RoleType.MAFIA
                 await consumer.send_json(
                     RoleAssigned(
+                        role_code=player.role.code,
                         role_name=player.role.name,
                         description=player.role.description,
                         role_type=player.role.role_type.value,
                         mafia_ids=mafia_player_ids if is_mafia else None,
+                        mafia_members=mafia_members if is_mafia else None,
                     ).to_json()
                 )
                 if is_mafia:
@@ -442,19 +449,26 @@ async def game_reset(
         ).to_json()
     )
     if game_session is not None and consumer.user.id in event['player_ids']:
-        mafia_player_ids = [
-            p.id for p in game_session.players
+        mafia_players = [
+            p for p in game_session.players
             if p.role is not None and p.role.role_type == RoleType.MAFIA
+        ]
+        mafia_player_ids = [p.id for p in mafia_players]
+        mafia_members = [
+            {'id': p.id, 'role_code': p.role.code, 'role_name': p.role.name}
+            for p in mafia_players if p.role is not None
         ]
         for player in game_session.players:
             if player.id == consumer.user.id and player.role is not None:
                 is_mafia = player.role.role_type == RoleType.MAFIA
                 await consumer.send_json(
                     RoleAssigned(
+                        role_code=player.role.code,
                         role_name=player.role.name,
                         description=player.role.description,
                         role_type=player.role.role_type.value,
                         mafia_ids=mafia_player_ids if is_mafia else None,
+                        mafia_members=mafia_members if is_mafia else None,
                     ).to_json()
                 )
                 if is_mafia:
