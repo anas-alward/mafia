@@ -32,6 +32,7 @@ from ..events.game import (
     Detect,
     GameCanceled,
     GameEvents,
+    GameOver,
     GameReset,
     GameStarted,
     Heal,
@@ -490,6 +491,17 @@ async def game_canceled(consumer: RealtimeConsumer, event: dict) -> None:
     await consumer.send_json(GameCanceled().to_json())
 
 
+@trampoline(GameEvents.GAME_OVER)
+async def game_over(consumer: RealtimeConsumer, event: dict) -> None:
+    await consumer.send_json(
+        GameOver(
+            winner=event['winner'],
+            player_ids=event['player_ids'],
+            logs=event.get('logs', []),
+        ).to_json()
+    )
+
+
 # =========================================================================
 # Helpers
 # =========================================================================
@@ -564,20 +576,23 @@ async def _transition_after_resolve(
     DAY         → new NIGHT round → SunSet   (no lynch target edge case)
     VOTE_RESULT → new NIGHT round → SunSet
     """
+    player_ids = [p.id for p in game_session.players]
+    winner = game_session.check_winner()
+    if winner is not None:
+        await consumer.groups.emit(
+            RoomActive(room_code=consumer.code),
+            GameOver(winner=winner, player_ids=player_ids, logs=logs),
+        )
+        await game_session.flush()
+        await consumer.session.clear_game_session_id()
+        return
+
     if round_.phase == Phase.NIGHT:
-        alive_ids = [p.id for p in game_session.players if p.status == PlayerStatus.ALIVE]
-        if len(alive_ids) <= 1:
-            await consumer.groups.emit(group, SunRise(player_ids=alive_ids, logs=logs))
-            return
         await game_session.new_round(phase=Phase.DAY)
         alive_ids = [p.id for p in game_session.players if p.status == PlayerStatus.ALIVE]
         await consumer.groups.emit(group, SunRise(player_ids=alive_ids, logs=logs))
     else:
         # DAY (no lynch) or EXECUTION → transition to NIGHT.
-        alive_ids = [p.id for p in game_session.players if p.status == PlayerStatus.ALIVE]
-        if len(alive_ids) <= 1:
-            await consumer.groups.emit(group, SunSet(player_ids=alive_ids, logs=logs))
-            return
         await game_session.new_round(phase=Phase.NIGHT)
         alive_ids = [p.id for p in game_session.players if p.status == PlayerStatus.ALIVE]
         await consumer.groups.emit(group, SunSet(player_ids=alive_ids, logs=logs))

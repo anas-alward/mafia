@@ -31,6 +31,7 @@ class GameEvents(StrEnum):
     CANCEL = 'cancel'
     GAME_RESET = 'game_reset'
     GAME_CANCELED = 'game_canceled'
+    GAME_OVER = 'game_over'
 
 
 # -- Inbound ------------------------------------------------------------------
@@ -176,3 +177,10 @@ class GameReset(OutboundEvent):
 
 class GameCanceled(OutboundEvent):
     channel_type: ClassVar[str] = GameEvents.GAME_CANCELED
+
+
+class GameOver(OutboundEvent):
+    channel_type: ClassVar[str] = GameEvents.GAME_OVER
+    winner: str
+    player_ids: list[int]
+    logs: list[dict[str, Any]]

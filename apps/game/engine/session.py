@@ -9,7 +9,6 @@ from .roles.distributor import RoleDistributor
 from .round import ROUND_CLASSES, GameRound
 
 
-
 @dataclass
 class GameSession:
     """
@@ -122,5 +121,29 @@ class GameSession:
         session = cls(id=id, room_id=room_id, players=players)
         await session.save()
         return session
+
+    def check_winner(self) -> str | None:
+        """Return 'town', 'mafia', or None if the game continues."""
+        from .constants import PlayerStatus
+        from .roles.type import RoleType
+
+        alive_mafia = [
+            p for p in self.players
+            if p.status == PlayerStatus.ALIVE
+            and p.role is not None
+            and p.role.role_type == RoleType.MAFIA
+        ]
+        alive_town = [
+            p for p in self.players
+            if p.status == PlayerStatus.ALIVE
+            and p.role is not None
+            and p.role.role_type == RoleType.TOWN
+        ]
+
+        if len(alive_mafia) == 0:
+            return 'town'
+        if len(alive_mafia) >= len(alive_town):
+            return 'mafia'
+        return None
 
 
