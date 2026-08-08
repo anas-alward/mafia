@@ -17,4 +17,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            /home/anas/apps/mafia/scripts/deploy.sh
+            cd /home/anas/apps/mafia
+            git pull origin main
+            chmod +x scripts/deploy.sh
+            ./scripts/deploy.sh
