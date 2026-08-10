@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING
 from apps.core.webrtc import webrtc_client
 from apps.room.session import RoomMember
 
-from .decorators import is_host
 from ..dispatch import on, trampoline
 from ..error_codes import ErrorCode
 from ..events import (
@@ -24,8 +23,8 @@ from ..events import (
     CloseRoom,
     HostChanged,
     JoinRequestAccepted,
-    JoinRequestRejected,
     JoinRequestReceived,
+    JoinRequestRejected,
     PlayerJoined,
     PlayerLeft,
     RejectJoinRequest,
@@ -34,6 +33,7 @@ from ..events import (
 )
 from ..events.room import RoomEvents
 from ..groups import RoomActive, RoomPending
+from .decorators import is_host
 
 if TYPE_CHECKING:
     from ..consumers import RealtimeConsumer
@@ -214,5 +214,6 @@ async def room_state(consumer, event: dict) -> None:
             room_name=event['room_name'],
             host_id=event['host_id'],
             members=event['members'],
+            game_state=event.get('game_state'),
         ).to_json()
     )

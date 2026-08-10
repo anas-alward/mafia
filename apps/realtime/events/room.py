@@ -105,3 +105,4 @@ class RoomState(OutboundEvent):
     room_name: str | None
     host_id: int | None
     members: list[int]
+    game_state: dict[str, Any] | None = None

@@ -25,6 +25,7 @@ from __future__ import annotations
 from typing import Any
 
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from django.core.exceptions import PermissionDenied
 
 from apps.core.webrtc import webrtc_client
 from apps.game.engine.constants import PlayerStatus
@@ -40,15 +41,15 @@ from .events import (
     ErrorEvent,
     GameState,
     HostChanged,
-    JoinRequestRejected,
     JoinRequestReceived,
+    JoinRequestRejected,
     OutboundEvent,
     PlayerLeft,
     RoomState,
 )
 from .groups import GameSessionGroup, GameSessionRole, RoomActive, RoomPending
 from .membership import GroupMembership
-from django.core.exceptions import PermissionDenied
+
 
 class RealtimeConsumer(EventDispatchMixin, AsyncJsonWebsocketConsumer):
     # -- lifecycle --------------------------------------------------------
@@ -169,22 +170,13 @@ class RealtimeConsumer(EventDispatchMixin, AsyncJsonWebsocketConsumer):
             name=self.user.username,
         )
         member_ids = await self.session.get_member_ids()
-        await self.send_event(
-            RoomState(
-                credentials=credentials,
-                room_id=self.session.id,
-                room_name=self.session.name,
-                host_id=self.session.host_id,
-                members=list(member_ids),
-            )
-        )
 
-        # Send current game state if a game is in progress.
+        # Build game state payload if a game is in progress.
+        game_state_payload: dict[str, Any] | None = None
         game_session = await GameSession.load(room_id=self.code)
         if game_session is not None:
             current_round = game_session.current_round()
 
-            # Public player info — no roles exposed.
             players_public = [
                 {'id': p.id, 'code': p.code, 'status': p.status.value}
                 for p in game_session.players
@@ -192,7 +184,6 @@ class RealtimeConsumer(EventDispatchMixin, AsyncJsonWebsocketConsumer):
             live_ids = [p.id for p in game_session.players if p.status == PlayerStatus.ALIVE]
             dead_ids = [p.id for p in game_session.players if p.status == PlayerStatus.DEAD]
 
-            # Private info for the reconnecting player.
             role_code = None
             role_name = None
             role_type = None
@@ -219,30 +210,35 @@ class RealtimeConsumer(EventDispatchMixin, AsyncJsonWebsocketConsumer):
                     )
 
             required_actions = current_round.get_required_actions_for_player(self.user.id)
-
-            # Round action logs (night + day).
             logs = [a.to_dict() for a in current_round.all_actions]
 
-            await self.send_event(
-                GameState(
-                    session_id=game_session.id,
-                    players=players_public,
-                    live_player_ids=live_ids,
-                    dead_player_ids=dead_ids,
-                    current_phase=current_round.phase.value,
-                    round_number=current_round.round_number,
-                    lynch_target_id=getattr(current_round, 'lynch_target_id', None),
-                    logs=logs,
-                    role_code=role_code,
-                    role_name=role_name,
-                    role_type=role_type,
-                    role_description=role_description,
-                    mafia_ids=mafia_ids,
-                    required_actions=required_actions,
-                )
+            game_state_payload = GameState(
+                session_id=game_session.id,
+                players=players_public,
+                live_player_ids=live_ids,
+                dead_player_ids=dead_ids,
+                current_phase=current_round.phase.value,
+                round_number=current_round.round_number,
+                lynch_target_id=getattr(current_round, 'lynch_target_id', None),
+                logs=logs,
+                role_code=role_code,
+                role_name=role_name,
+                role_type=role_type,
+                role_description=role_description,
+                mafia_ids=mafia_ids,
+                required_actions=required_actions,
+            ).model_dump()
+
+        await self.send_event(
+            RoomState(
+                credentials=credentials,
+                room_id=self.session.id,
+                room_name=self.session.name,
+                host_id=self.session.host_id,
+                members=list(member_ids),
+                game_state=game_state_payload,
             )
-        else:
-            await self.send_event(GameState())
+        )
 
         if host_regained:
             await self.groups.emit(
