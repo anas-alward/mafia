@@ -20,6 +20,7 @@ from apps.game.engine.roles.type import (
     MafiaMember,
     MafiaRoleblocker,
     RoleType,
+    TownCop,
     TownDoctor,
 )
 from apps.game.engine.round import GRACE_SECONDS
@@ -30,6 +31,7 @@ from ..error_codes import ErrorCode
 from ..events.game import (
     CancelGame,
     Detect,
+    DetectResult,
     GameCanceled,
     GameEvents,
     GameOver,
@@ -169,11 +171,25 @@ async def handle_shoot(consumer: RealtimeConsumer, event: Shoot, *, game_session
 @on(Detect)
 @game_session(on_none="error")
 @require_phase(Phase.NIGHT)
+@require_role(TownCop)
 @is_alive
 async def handle_detect(consumer: RealtimeConsumer, event: Detect, *, game_session: GameSession) -> None:
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.DETECT)
     )
+
+    target = next((p for p in game_session.players if p.id == event.target_id), None)
+    if target is not None and target.role is not None:
+        role_type = target.role.role_type.value
+        if isinstance(target.role, MafiaGodfather):
+            role_type = RoleType.TOWN.value
+        await consumer.send_json(
+            DetectResult(
+                target_id=event.target_id,
+                role_type=role_type,
+            ).to_json()
+        )
+
     await _try_auto_transition_night(consumer, game_session)
 
 

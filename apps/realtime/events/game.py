@@ -14,6 +14,7 @@ class GameEvents(StrEnum):
     HEAL = 'heal'
     SHOOT = 'shoot'
     DETECT = 'detect'
+    DETECT_RESULT = 'detect_result'
     SUBMIT_VOTES = 'submit_votes'
     SILENT = 'silent'
     SUN_SET = 'sun_set'
@@ -177,6 +178,12 @@ class GameReset(OutboundEvent):
 
 class GameCanceled(OutboundEvent):
     channel_type: ClassVar[str] = GameEvents.GAME_CANCELED
+
+
+class DetectResult(OutboundEvent):
+    channel_type: ClassVar[str] = GameEvents.DETECT_RESULT
+    target_id: int
+    role_type: str
 
 
 class GameOver(OutboundEvent):
