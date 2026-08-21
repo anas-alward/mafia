@@ -3,7 +3,7 @@ import random
 from .type import (
     MafiaGodfather,
     MafiaMember,
-    MafiaRoleblocker,
+    MafiaSilencer,
     TownBomb,
     TownCop,
     TownDoctor,
@@ -54,7 +54,7 @@ ROLE_COMPOSITIONS: dict[int, list[type]] = {
         TownVanilla,
         TownVanilla,
         MafiaGodfather,
-        MafiaRoleblocker,
+        MafiaSilencer,
     ],
     9: [
         TownDoctor,
@@ -65,7 +65,7 @@ ROLE_COMPOSITIONS: dict[int, list[type]] = {
         TownVanilla,
         TownVanilla,
         MafiaGodfather,
-        MafiaRoleblocker,
+        MafiaSilencer,
         MafiaMember,
     ],
     10: [
@@ -77,7 +77,7 @@ ROLE_COMPOSITIONS: dict[int, list[type]] = {
         TownVanilla,
         TownVanilla,
         MafiaGodfather,
-        MafiaRoleblocker,
+        MafiaSilencer,
         MafiaMember,
     ],
     11: [
@@ -90,7 +90,7 @@ ROLE_COMPOSITIONS: dict[int, list[type]] = {
         TownVanilla,
         TownVanilla,
         MafiaGodfather,
-        MafiaRoleblocker,
+        MafiaSilencer,
         MafiaMember,
     ],
 }

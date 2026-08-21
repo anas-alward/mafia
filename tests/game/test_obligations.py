@@ -1,11 +1,13 @@
 import pytest
+
 from apps.game.engine.action import Action
 from apps.game.engine.constants import ActionType, Phase, PlayerStatus
 from apps.game.engine.player import Player
 from apps.game.engine.roles.type import (
     MafiaGodfather,
     MafiaMember,
-    MafiaRoleblocker,
+    MafiaSilencer,
+    TownCop,
     TownDoctor,
     TownVanilla,
 )
@@ -29,7 +31,7 @@ class TestObligations:
     def test_mafia_kill_priority_chain(self):
         players = [
             Player(id=1, role=MafiaMember()),       # priority 3
-            Player(id=2, role=MafiaRoleblocker()),  # priority 2
+            Player(id=2, role=MafiaSilencer()),  # priority 2
             Player(id=3, role=MafiaGodfather()),    # priority 1
         ]
         round_ = NightRound(round_number=1, members=players, phase=Phase.NIGHT)
@@ -42,7 +44,7 @@ class TestObligations:
     def test_mafia_kill_fallback_when_godfather_dead(self):
         players = [
             Player(id=1, role=MafiaMember(), status=PlayerStatus.ALIVE),
-            Player(id=2, role=MafiaRoleblocker(), status=PlayerStatus.ALIVE),
+            Player(id=2, role=MafiaSilencer(), status=PlayerStatus.ALIVE),
             Player(id=3, role=MafiaGodfather(), status=PlayerStatus.DEAD),
         ]
         round_ = NightRound(round_number=1, members=players, phase=Phase.NIGHT)
@@ -76,6 +78,24 @@ class TestObligations:
 
         round_.night_actions.append(Action(actor_id=1, target_id=2, action_type=ActionType.HEAL))
         assert await round_.is_player_done(1)
+
+    @pytest.mark.asyncio
+    async def test_has_submitted_action(self):
+        players = [
+            Player(id=1, role=TownCop()),
+            Player(id=2, role=TownVanilla()),
+        ]
+        round_ = NightRound(round_number=1, members=players, phase=Phase.NIGHT)
+        round_.compute_obligations()
+
+        assert not await round_.has_submitted_action(1, ActionType.DETECT)
+
+        round_.night_actions.append(
+            Action(actor_id=1, target_id=2, action_type=ActionType.DETECT)
+        )
+
+        assert await round_.has_submitted_action(1, ActionType.DETECT)
+        assert not await round_.has_submitted_action(2, ActionType.DETECT)
 
     @pytest.mark.asyncio
     async def test_is_round_done(self):

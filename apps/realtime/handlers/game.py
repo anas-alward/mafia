@@ -18,7 +18,7 @@ from apps.game.engine.constants import ActionType, Phase, PlayerStatus
 from apps.game.engine.roles.type import (
     MafiaGodfather,
     MafiaMember,
-    MafiaRoleblocker,
+    MafiaSilencer,
     RoleType,
     TownCop,
     TownDoctor,
@@ -43,9 +43,8 @@ from ..events.game import (
     ResetGame,
     Revenge,
     RoleAssigned,
-    Roleblock,
     Shoot,
-    Silent,
+    Silence,
     StartGame,
     SubmitVotes,
     SunRise,
@@ -115,7 +114,7 @@ async def handle_vote(consumer: RealtimeConsumer, event: Vote, *, game_session: 
 @game_session(on_none="error")
 @require_phase(Phase.NIGHT)
 @is_alive
-@require_role(MafiaGodfather, MafiaRoleblocker, MafiaMember)
+@require_role(MafiaGodfather, MafiaSilencer, MafiaMember)
 async def handle_kill(consumer: RealtimeConsumer, event: Kill, *, game_session: GameSession) -> None:
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.KILL)
@@ -174,7 +173,15 @@ async def handle_shoot(consumer: RealtimeConsumer, event: Shoot, *, game_session
 @require_role(TownCop)
 @is_alive
 async def handle_detect(consumer: RealtimeConsumer, event: Detect, *, game_session: GameSession) -> None:
-    await game_session.current_round().add_action(
+    round_ = game_session.current_round()
+    if await round_.has_submitted_action(consumer.user.id, ActionType.DETECT):
+        await consumer.send_error(
+            ErrorCode.INVALID_ACTION,
+            'Detective can only investigate once per night',
+        )
+        return
+
+    await round_.add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.DETECT)
     )
 
@@ -193,26 +200,14 @@ async def handle_detect(consumer: RealtimeConsumer, event: Detect, *, game_sessi
     await _try_auto_transition_night(consumer, game_session)
 
 
-@on(Silent)
+@on(Silence)
 @game_session(on_none="error")
 @require_phase(Phase.NIGHT)
+@require_role(MafiaSilencer)
 @is_alive
-async def handle_silent(consumer: RealtimeConsumer, event: Silent, *, game_session: GameSession) -> None:
-    """Player explicitly skips their night action."""
+async def handle_silence(consumer: RealtimeConsumer, event: Silence, *, game_session: GameSession) -> None:
     await game_session.current_round().add_action(
-        Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.SILENT)
-    )
-    await _try_auto_transition_night(consumer, game_session)
-
-
-@on(Roleblock)
-@game_session(on_none="error")
-@require_phase(Phase.NIGHT)
-@require_role(MafiaRoleblocker)
-@is_alive
-async def handle_roleblock(consumer: RealtimeConsumer, event: Roleblock, *, game_session: GameSession) -> None:
-    await game_session.current_round().add_action(
-        Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.ROLEBLOCK)
+        Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.SILENCE)
     )
     await consumer.groups.emit(
         GameSessionRole(
@@ -223,7 +218,7 @@ async def handle_roleblock(consumer: RealtimeConsumer, event: Roleblock, *, game
         NightAction(
             actor_id=consumer.user.id,
             target_id=event.target_id,
-            action_type=ActionType.ROLEBLOCK.value,
+            action_type=ActionType.SILENCE.value,
         ),
     )
     await _try_auto_transition_night(consumer, game_session)

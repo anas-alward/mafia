@@ -148,6 +148,25 @@ class GameRound:
                 return False
         return True
 
+    async def has_submitted_action(self, player_id: int, action_type: ActionType) -> bool:
+        """True when *player_id* has already recorded *action_type* this round.
+
+        Checks both the in-memory action list and any pending actions still in
+        Redis (submitted via :meth:`add_action` but not yet merged).
+        """
+        for a in self._get_actions_list():
+            if a.actor_id == player_id and a.action_type == action_type:
+                return True
+
+        if self._session is not None:
+            pending_raw = await redis_client.lrange(self._session.pending_actions_key, 0, -1)
+            for raw in pending_raw:
+                a = Action.from_dict(json.loads(raw))
+                if a.actor_id == player_id and a.action_type == action_type:
+                    return True
+
+        return False
+
     # ------------------------------------------------------------------
     # Action entry & resolution helpers
     # ------------------------------------------------------------------
@@ -221,7 +240,7 @@ class GameRound:
 
 @dataclass
 class NightRound(GameRound):
-    """Night phase: mafia kills, heals, investigations, roleblocks, etc."""
+    """Night phase: mafia kills, heals, investigations, silences, etc."""
 
     night_actions: list[Action] = field(default_factory=list)
 
@@ -260,9 +279,9 @@ class NightRound(GameRound):
         blocked: set[int] = set()
         healed: set[int] = set()
 
-        # 1. ROLEBLOCK
+        # 1. SILENCE
         for a in actions:
-            if a.action_type == ActionType.ROLEBLOCK:
+            if a.action_type == ActionType.SILENCE:
                 blocked.add(a.target_id)
                 logs.append({'target_id': a.target_id, 'action_type': a.action_type.value})
 

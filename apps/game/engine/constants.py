@@ -13,8 +13,7 @@ class ActionType(StrEnum):
     HEAL = 'heal'
     DETECT = 'detect'
     SHOOT = 'shoot'
-    ROLEBLOCK = 'roleblock'
-    SILENT = 'silent'
+    SILENCE = 'silence'
     LYNCH = 'lynch'
 
 

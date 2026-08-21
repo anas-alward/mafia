@@ -5,7 +5,7 @@ Usage (stack under @on/@trampoline, outermost first):
     @on(Kill)
     @game_session(on_none='error')
     @require_phase(Phase.NIGHT)
-    @require_role(MafiaGodfather, MafiaRoleblocker, MafiaMember)
+    @require_role(MafiaGodfather, MafiaSilencer, MafiaMember)
     @is_alive
     async def handle_kill(consumer, event, *, game_session): ...
 

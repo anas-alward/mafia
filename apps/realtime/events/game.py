@@ -16,7 +16,6 @@ class GameEvents(StrEnum):
     DETECT = 'detect'
     DETECT_RESULT = 'detect_result'
     SUBMIT_VOTES = 'submit_votes'
-    SILENT = 'silent'
     SUN_SET = 'sun_set'
     GAME_STARTED = 'game_started'
     SUN_RISE = 'sun_rise'
@@ -24,7 +23,7 @@ class GameEvents(StrEnum):
     VOTE_CAST = 'vote_cast'
     VOTE_RESULT_STARTED = 'vote_result_started'
     SUBMIT_VOTE_RESULT = 'submit_vote_result'
-    ROLEBLOCK = 'roleblock'
+    SILENCE = 'silence'
     SUBMIT_NIGHT = 'submit_night'
     GAME_STATE = 'game_state'
     NIGHT_ACTION = 'night_action'
@@ -76,13 +75,8 @@ class SubmitVotes(InboundEvent):
     type: ClassVar[str] = GameEvents.SUBMIT_VOTES
 
 
-class Silent(InboundEvent):
-    type: ClassVar[str] = GameEvents.SILENT
-    target_id: int | None = None
-
-
-class Roleblock(InboundEvent):
-    type: ClassVar[str] = GameEvents.ROLEBLOCK
+class Silence(InboundEvent):
+    type: ClassVar[str] = GameEvents.SILENCE
     target_id: int
 
 

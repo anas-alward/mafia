@@ -103,15 +103,15 @@ class MafiaGodfather(BaseRole):
     }
 
 
-class MafiaRoleblocker(BaseRole):
-    code = "roleblocker"
+class MafiaSilencer(BaseRole):
+    code = "silencer"
     role_type = RoleType.MAFIA
-    name = "Mafia Silencer"
-    description = "Blocks one player each night, preventing them from using their action."
+    name = "Silencer"
+    description = "Silences one player each night, preventing them from acting."
     actions = {
         Phase.NIGHT: [
             ActionConfig(action_type=ActionType.KILL, required=True, priority=2),
-            ActionConfig(action_type=ActionType.ROLEBLOCK, required=True),
+            ActionConfig(action_type=ActionType.SILENCE, required=True),
         ],
         Phase.DAY: [
             ActionConfig(action_type=ActionType.VOTE, required=True),
@@ -141,7 +141,7 @@ ROLES: list[BaseRole] = [
     TownBomb(),
     TownVanilla(),
     MafiaGodfather(),
-    MafiaRoleblocker(),
+    MafiaSilencer(),
     MafiaMember(),
 ]
 

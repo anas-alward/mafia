@@ -5,7 +5,7 @@ from apps.game.engine.constants import ActionType, Phase, PlayerStatus
 from apps.game.engine.player import Player
 from apps.game.engine.roles.type import (
     MafiaGodfather,
-    MafiaRoleblocker,
+    MafiaSilencer,
     TownBomb,
     TownDoctor,
     TownVanilla,
@@ -18,7 +18,7 @@ def test_last_actions_keeps_last_occurrence():
     actions = [
         Action(actor_id=1, target_id=2, action_type=ActionType.KILL),
         Action(actor_id=1, target_id=3, action_type=ActionType.KILL),
-        Action(actor_id=1, target_id=5, action_type=ActionType.ROLEBLOCK),
+        Action(actor_id=1, target_id=5, action_type=ActionType.SILENCE),
         Action(actor_id=2, target_id=4, action_type=ActionType.KILL),
     ]
 
@@ -27,7 +27,7 @@ def test_last_actions_keeps_last_occurrence():
     by_key = {(a.actor_id, a.action_type): a.target_id for a in result}
     assert by_key == {
         (1, ActionType.KILL): 3,
-        (1, ActionType.ROLEBLOCK): 5,
+        (1, ActionType.SILENCE): 5,
         (2, ActionType.KILL): 4,
     }
 
@@ -75,16 +75,16 @@ async def test_night_change_of_mind_heal():
 
 
 @pytest.mark.asyncio
-async def test_roleblocker_keeps_both_actions():
+async def test_silencer_keeps_both_actions():
     players = [
-        Player(id=1, role=MafiaRoleblocker()),
+        Player(id=1, role=MafiaSilencer()),
         Player(id=2, role=TownDoctor()),
         Player(id=3, role=TownVanilla()),
         Player(id=4, role=TownVanilla()),
     ]
     round_ = NightRound(round_number=1, members=players, phase=Phase.NIGHT)
     round_.compute_obligations()
-    round_.night_actions.append(Action(actor_id=1, target_id=2, action_type=ActionType.ROLEBLOCK))
+    round_.night_actions.append(Action(actor_id=1, target_id=2, action_type=ActionType.SILENCE))
     round_.night_actions.append(Action(actor_id=1, target_id=3, action_type=ActionType.KILL))
     round_.night_actions.append(Action(actor_id=1, target_id=4, action_type=ActionType.KILL))
     round_.night_actions.append(Action(actor_id=2, target_id=4, action_type=ActionType.HEAL))
@@ -93,7 +93,7 @@ async def test_roleblocker_keeps_both_actions():
 
     assert players[2].status == PlayerStatus.ALIVE  # abandoned kill target survives
     assert players[3].status == PlayerStatus.DEAD   # final kill target dies
-    assert {'target_id': 2, 'action_type': 'roleblock'} in logs
+    assert {'target_id': 2, 'action_type': 'silence'} in logs
     kill_logs = [entry for entry in logs if entry['action_type'] == 'kill']
     assert kill_logs == [{'target_id': 4, 'action_type': 'kill'}]
 
@@ -102,7 +102,7 @@ async def test_roleblocker_keeps_both_actions():
 async def test_non_designated_killer_ignored():
     players = [
         Player(id=1, role=MafiaGodfather()),
-        Player(id=2, role=MafiaRoleblocker()),
+        Player(id=2, role=MafiaSilencer()),
         Player(id=3, role=TownVanilla()),
         Player(id=4, role=TownVanilla()),
     ]
@@ -114,7 +114,7 @@ async def test_non_designated_killer_ignored():
     logs = await round_.resolve()
 
     assert players[2].status == PlayerStatus.DEAD   # Godfather's target dies
-    assert players[3].status == PlayerStatus.ALIVE  # Roleblocker's kill ignored
+    assert players[3].status == PlayerStatus.ALIVE  # Silencer's kill ignored
     kill_logs = [entry for entry in logs if entry['action_type'] == 'kill']
     assert kill_logs == [{'target_id': 3, 'action_type': 'kill'}]
 

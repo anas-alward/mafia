@@ -7,7 +7,7 @@ from apps.game.engine.player import Player
 from apps.game.engine.roles.type import (
     MafiaGodfather,
     MafiaMember,
-    MafiaRoleblocker,
+    MafiaSilencer,
     RoleType,
     TownCop,
     TownDoctor,
@@ -135,14 +135,14 @@ class TestReconnectionPayload:
 
     def test_role_info_for_reconnecting_player(self):
         players = [
-            Player(id=1, role=MafiaRoleblocker()),
+            Player(id=1, role=MafiaSilencer()),
             Player(id=2, role=TownCop()),
         ]
         my_player = next(p for p in players if p.id == 1)
         assert my_player.role is not None
-        assert my_player.role.name == 'Mafia Silencer'
+        assert my_player.role.name == 'Silencer'
         assert my_player.role.role_type.value == 'mafia'
-        assert 'Blocks one player' in my_player.role.description
+        assert 'Silences one player' in my_player.role.description
 
     def test_required_actions_for_reconnecting_player(self):
         players = [
