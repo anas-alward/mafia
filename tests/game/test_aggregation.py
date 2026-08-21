@@ -6,10 +6,11 @@ from apps.game.engine.player import Player
 from apps.game.engine.roles.type import (
     MafiaGodfather,
     MafiaRoleblocker,
+    TownBomb,
     TownDoctor,
     TownVanilla,
 )
-from apps.game.engine.round import NightRound
+from apps.game.engine.round import DayRound, NightRound, VoteResultRound
 
 
 def test_last_actions_keeps_last_occurrence():
@@ -116,3 +117,55 @@ async def test_non_designated_killer_ignored():
     assert players[3].status == PlayerStatus.ALIVE  # Roleblocker's kill ignored
     kill_logs = [l for l in logs if l['action_type'] == 'kill']
     assert kill_logs == [{'target_id': 3, 'action_type': 'kill'}]
+
+
+@pytest.mark.asyncio
+async def test_day_vote_change_of_mind():
+    players = [
+        Player(id=1, role=TownVanilla()),
+        Player(id=2, role=TownVanilla()),
+        Player(id=3, role=TownVanilla()),
+        Player(id=4, role=TownVanilla()),
+    ]
+    round_ = DayRound(round_number=1, members=players, phase=Phase.DAY)
+    round_.compute_obligations()
+    round_.day_actions.append(Action(actor_id=1, target_id=2, action_type=ActionType.VOTE))
+    round_.day_actions.append(Action(actor_id=1, target_id=3, action_type=ActionType.VOTE))
+    round_.day_actions.append(Action(actor_id=2, target_id=3, action_type=ActionType.VOTE))
+    round_.day_actions.append(Action(actor_id=3, target_id=3, action_type=ActionType.VOTE))
+    round_.day_actions.append(Action(actor_id=4, target_id=2, action_type=ActionType.VOTE))
+
+    logs = await round_.resolve()
+
+    assert round_.lynch_target_id == 3
+    vote_entries = [l for l in logs if l['action_type'] == 'vote']
+    assert vote_entries == [
+        {'actor_id': 1, 'target_id': 3, 'action_type': 'vote'},
+        {'actor_id': 2, 'target_id': 3, 'action_type': 'vote'},
+        {'actor_id': 3, 'target_id': 3, 'action_type': 'vote'},
+        {'actor_id': 4, 'target_id': 2, 'action_type': 'vote'},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_revenge_dedup():
+    players = [
+        Player(id=1, role=TownVanilla()),
+        Player(id=2, role=TownBomb()),
+        Player(id=3, role=TownVanilla()),
+        Player(id=4, role=TownVanilla()),
+    ]
+    round_ = VoteResultRound(
+        round_number=1, members=players, phase=Phase.VOTE_RESULT, lynch_target_id=2
+    )
+    round_.compute_obligations()
+    round_.day_actions.append(Action(actor_id=2, target_id=3, action_type=ActionType.REVENGE))
+    round_.day_actions.append(Action(actor_id=2, target_id=4, action_type=ActionType.REVENGE))
+
+    logs = await round_.resolve()
+
+    assert players[1].status == PlayerStatus.DEAD   # lynched
+    assert players[2].status == PlayerStatus.ALIVE  # abandoned revenge target survives
+    assert players[3].status == PlayerStatus.DEAD   # final revenge target dies
+    revenge_logs = [l for l in logs if l['action_type'] == 'revenge']
+    assert revenge_logs == [{'actor_id': 2, 'target_id': 4, 'action_type': 'revenge'}]

@@ -343,10 +343,11 @@ class DayRound(GameRound):
 
     async def resolve(self) -> list[dict]:
         await self._merge_pending_actions()
+        actions = self._last_actions(self.day_actions)
         logs: list[dict] = []
         actor_votes: dict[int, int] = {}
 
-        for a in self.day_actions:
+        for a in actions:
             if a.action_type == ActionType.VOTE:
                 if a.target_id is None:
                     continue
@@ -430,6 +431,7 @@ class VoteResultRound(GameRound):
 
     async def resolve(self) -> list[dict]:
         await self._merge_pending_actions()
+        actions = self._last_actions(self.day_actions)
         logs: list[dict] = []
 
         if self.lynch_target_id is not None:
@@ -438,7 +440,7 @@ class VoteResultRound(GameRound):
                 target.status = PlayerStatus.DEAD
             logs.append({'actor_id': self.lynch_target_id, 'target_id': None, 'action_type': ActionType.LYNCH.value})
 
-            for a in self.day_actions:
+            for a in actions:
                 if a.action_type == ActionType.REVENGE:
                     revenge_target = self._get_player(a.target_id)
                     if revenge_target:
