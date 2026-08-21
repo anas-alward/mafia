@@ -48,7 +48,7 @@ async def test_night_change_of_mind_kill():
 
     assert players[1].status == PlayerStatus.ALIVE  # first target survives
     assert players[2].status == PlayerStatus.DEAD   # final target dies
-    kill_logs = [l for l in logs if l['action_type'] == 'kill']
+    kill_logs = [entry for entry in logs if entry['action_type'] == 'kill']
     assert kill_logs == [{'target_id': 3, 'action_type': 'kill'}]
 
 
@@ -70,7 +70,7 @@ async def test_night_change_of_mind_heal():
 
     assert players[2].status == PlayerStatus.DEAD   # A killed (heal on A discarded)
     assert players[3].status == PlayerStatus.ALIVE  # B healed
-    heal_logs = [l for l in logs if l['action_type'] == 'heal']
+    heal_logs = [entry for entry in logs if entry['action_type'] == 'heal']
     assert heal_logs == [{'target_id': 4, 'action_type': 'heal'}]
 
 
@@ -94,7 +94,7 @@ async def test_roleblocker_keeps_both_actions():
     assert players[2].status == PlayerStatus.ALIVE  # abandoned kill target survives
     assert players[3].status == PlayerStatus.DEAD   # final kill target dies
     assert {'target_id': 2, 'action_type': 'roleblock'} in logs
-    kill_logs = [l for l in logs if l['action_type'] == 'kill']
+    kill_logs = [entry for entry in logs if entry['action_type'] == 'kill']
     assert kill_logs == [{'target_id': 4, 'action_type': 'kill'}]
 
 
@@ -115,7 +115,7 @@ async def test_non_designated_killer_ignored():
 
     assert players[2].status == PlayerStatus.DEAD   # Godfather's target dies
     assert players[3].status == PlayerStatus.ALIVE  # Roleblocker's kill ignored
-    kill_logs = [l for l in logs if l['action_type'] == 'kill']
+    kill_logs = [entry for entry in logs if entry['action_type'] == 'kill']
     assert kill_logs == [{'target_id': 3, 'action_type': 'kill'}]
 
 
@@ -138,7 +138,7 @@ async def test_day_vote_change_of_mind():
     logs = await round_.resolve()
 
     assert round_.lynch_target_id == 3
-    vote_entries = [l for l in logs if l['action_type'] == 'vote']
+    vote_entries = [entry for entry in logs if entry['action_type'] == 'vote']
     assert vote_entries == [
         {'actor_id': 1, 'target_id': 3, 'action_type': 'vote'},
         {'actor_id': 2, 'target_id': 3, 'action_type': 'vote'},
@@ -167,5 +167,5 @@ async def test_revenge_dedup():
     assert players[1].status == PlayerStatus.DEAD   # lynched
     assert players[2].status == PlayerStatus.ALIVE  # abandoned revenge target survives
     assert players[3].status == PlayerStatus.DEAD   # final revenge target dies
-    revenge_logs = [l for l in logs if l['action_type'] == 'revenge']
+    revenge_logs = [entry for entry in logs if entry['action_type'] == 'revenge']
     assert revenge_logs == [{'actor_id': 2, 'target_id': 4, 'action_type': 'revenge'}]
