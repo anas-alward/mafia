@@ -1,5 +1,14 @@
+import pytest
+
 from apps.game.engine.action import Action
-from apps.game.engine.constants import ActionType, Phase
+from apps.game.engine.constants import ActionType, Phase, PlayerStatus
+from apps.game.engine.player import Player
+from apps.game.engine.roles.type import (
+    MafiaGodfather,
+    MafiaRoleblocker,
+    TownDoctor,
+    TownVanilla,
+)
 from apps.game.engine.round import NightRound
 
 
@@ -20,3 +29,90 @@ def test_last_actions_keeps_last_occurrence():
         (1, ActionType.ROLEBLOCK): 5,
         (2, ActionType.KILL): 4,
     }
+
+
+@pytest.mark.asyncio
+async def test_night_change_of_mind_kill():
+    players = [
+        Player(id=1, role=MafiaGodfather()),
+        Player(id=2, role=TownVanilla()),
+        Player(id=3, role=TownVanilla()),
+    ]
+    round_ = NightRound(round_number=1, members=players, phase=Phase.NIGHT)
+    round_.compute_obligations()
+    round_.night_actions.append(Action(actor_id=1, target_id=2, action_type=ActionType.KILL))
+    round_.night_actions.append(Action(actor_id=1, target_id=3, action_type=ActionType.KILL))
+
+    logs = await round_.resolve()
+
+    assert players[1].status == PlayerStatus.ALIVE  # first target survives
+    assert players[2].status == PlayerStatus.DEAD   # final target dies
+    kill_logs = [l for l in logs if l['action_type'] == 'kill']
+    assert kill_logs == [{'target_id': 3, 'action_type': 'kill'}]
+
+
+@pytest.mark.asyncio
+async def test_night_change_of_mind_heal():
+    players = [
+        Player(id=1, role=MafiaGodfather()),
+        Player(id=2, role=TownDoctor()),
+        Player(id=3, role=TownVanilla()),
+        Player(id=4, role=TownVanilla()),
+    ]
+    round_ = NightRound(round_number=1, members=players, phase=Phase.NIGHT)
+    round_.compute_obligations()
+    round_.night_actions.append(Action(actor_id=1, target_id=3, action_type=ActionType.KILL))
+    round_.night_actions.append(Action(actor_id=2, target_id=3, action_type=ActionType.HEAL))
+    round_.night_actions.append(Action(actor_id=2, target_id=4, action_type=ActionType.HEAL))
+
+    logs = await round_.resolve()
+
+    assert players[2].status == PlayerStatus.DEAD   # A killed (heal on A discarded)
+    assert players[3].status == PlayerStatus.ALIVE  # B healed
+    heal_logs = [l for l in logs if l['action_type'] == 'heal']
+    assert heal_logs == [{'target_id': 4, 'action_type': 'heal'}]
+
+
+@pytest.mark.asyncio
+async def test_roleblocker_keeps_both_actions():
+    players = [
+        Player(id=1, role=MafiaRoleblocker()),
+        Player(id=2, role=TownDoctor()),
+        Player(id=3, role=TownVanilla()),
+        Player(id=4, role=TownVanilla()),
+    ]
+    round_ = NightRound(round_number=1, members=players, phase=Phase.NIGHT)
+    round_.compute_obligations()
+    round_.night_actions.append(Action(actor_id=1, target_id=2, action_type=ActionType.ROLEBLOCK))
+    round_.night_actions.append(Action(actor_id=1, target_id=3, action_type=ActionType.KILL))
+    round_.night_actions.append(Action(actor_id=1, target_id=4, action_type=ActionType.KILL))
+    round_.night_actions.append(Action(actor_id=2, target_id=4, action_type=ActionType.HEAL))
+
+    logs = await round_.resolve()
+
+    assert players[2].status == PlayerStatus.ALIVE  # abandoned kill target survives
+    assert players[3].status == PlayerStatus.DEAD   # final kill target dies
+    assert {'target_id': 2, 'action_type': 'roleblock'} in logs
+    kill_logs = [l for l in logs if l['action_type'] == 'kill']
+    assert kill_logs == [{'target_id': 4, 'action_type': 'kill'}]
+
+
+@pytest.mark.asyncio
+async def test_non_designated_killer_ignored():
+    players = [
+        Player(id=1, role=MafiaGodfather()),
+        Player(id=2, role=MafiaRoleblocker()),
+        Player(id=3, role=TownVanilla()),
+        Player(id=4, role=TownVanilla()),
+    ]
+    round_ = NightRound(round_number=1, members=players, phase=Phase.NIGHT)
+    round_.compute_obligations()
+    round_.night_actions.append(Action(actor_id=1, target_id=3, action_type=ActionType.KILL))
+    round_.night_actions.append(Action(actor_id=2, target_id=4, action_type=ActionType.KILL))
+
+    logs = await round_.resolve()
+
+    assert players[2].status == PlayerStatus.DEAD   # Godfather's target dies
+    assert players[3].status == PlayerStatus.ALIVE  # Roleblocker's kill ignored
+    kill_logs = [l for l in logs if l['action_type'] == 'kill']
+    assert kill_logs == [{'target_id': 3, 'action_type': 'kill'}]

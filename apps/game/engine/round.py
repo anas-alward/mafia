@@ -251,18 +251,23 @@ class NightRound(GameRound):
 
     async def resolve(self) -> list[dict]:
         await self._merge_pending_actions()
+        actions = self._last_actions(self.night_actions)
+        designated_killer = next(
+            (pid for pid, types in self.obligations.items() if ActionType.KILL in types),
+            None,
+        )
         logs: list[dict] = []
         blocked: set[int] = set()
         healed: set[int] = set()
 
         # 1. ROLEBLOCK
-        for a in self.night_actions:
+        for a in actions:
             if a.action_type == ActionType.ROLEBLOCK:
                 blocked.add(a.target_id)
                 logs.append({'target_id': a.target_id, 'action_type': a.action_type.value})
 
         # 2. HEAL
-        for a in self.night_actions:
+        for a in actions:
             if a.action_type == ActionType.HEAL:
                 if a.actor_id in blocked:
                     continue
@@ -270,8 +275,10 @@ class NightRound(GameRound):
                 logs.append({'target_id': a.target_id, 'action_type': a.action_type.value})
 
         # 3. OFFENSIVE ACTIONS (KILL / SHOOT)
-        for a in self.night_actions:
+        for a in actions:
             if a.action_type in (ActionType.KILL, ActionType.SHOOT):
+                if a.action_type == ActionType.KILL and a.actor_id != designated_killer:
+                    continue
                 if a.actor_id in blocked:
                     continue
                 if a.target_id in healed:
@@ -283,7 +290,7 @@ class NightRound(GameRound):
                     logs.append({'target_id': a.target_id, 'action_type': a.action_type.value})
 
         # 4. DETECT
-        for a in self.night_actions:
+        for a in actions:
             if a.action_type == ActionType.DETECT:
                 if a.actor_id in blocked:
                     continue
