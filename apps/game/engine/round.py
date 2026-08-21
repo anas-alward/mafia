@@ -78,6 +78,13 @@ class GameRound:
     def alive_player_ids(self) -> set[int]:
         return {p.id for p in self.members if p.status == PlayerStatus.ALIVE}
 
+    def _last_actions(self, actions: list[Action]) -> list[Action]:
+        """Collapse actions by (actor_id, action_type), keeping the last occurrence."""
+        seen: dict[tuple[int, ActionType], Action] = {}
+        for a in actions:
+            seen[(a.actor_id, a.action_type)] = a
+        return list(seen.values())
+
     @property
     def all_actions(self) -> list[Action]:
         """All actions recorded in this round (for reconnection / logs display)."""
