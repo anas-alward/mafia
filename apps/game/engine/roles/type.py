@@ -107,7 +107,7 @@ class MafiaSilencer(BaseRole):
     code = "silencer"
     role_type = RoleType.MAFIA
     name = "Silencer"
-    description = "Silences one player each night, preventing them from acting."
+    description = "Silences one player each night, muting their voice for the following day."
     actions = {
         Phase.NIGHT: [
             ActionConfig(action_type=ActionType.KILL, required=True, priority=2),

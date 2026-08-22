@@ -55,6 +55,16 @@ class WebRTCClient:
             'token': result.data.token,
         }
 
+    def edit_participant(self, meeting_id: str, participant_id: str, preset_name: str) -> None:
+        """Update a participant's preset (e.g. mute via 'silent_players')."""
+        self.client.realtime_kit.meetings.edit_participant(
+            account_id=self.account_id,
+            app_id=self.app_id,
+            meeting_id=meeting_id,
+            participant_id=participant_id,
+            preset_name=preset_name,
+        )
+
     def refresh_token(self, meeting_id: str, participant_id: str) -> str:
         """Regenerate a participant's auth token."""
         result = self.client.realtime_kit.meetings.refresh_participant_token(
