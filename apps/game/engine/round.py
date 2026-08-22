@@ -276,20 +276,16 @@ class NightRound(GameRound):
             None,
         )
         logs: list[dict] = []
-        blocked: set[int] = set()
         healed: set[int] = set()
 
-        # 1. SILENCE
+        # 1. SILENCE — logs only; no longer blocks any night action.
         for a in actions:
             if a.action_type == ActionType.SILENCE:
-                blocked.add(a.target_id)
                 logs.append({'target_id': a.target_id, 'action_type': a.action_type.value})
 
         # 2. HEAL
         for a in actions:
             if a.action_type == ActionType.HEAL:
-                if a.actor_id in blocked:
-                    continue
                 healed.add(a.target_id)
                 logs.append({'target_id': a.target_id, 'action_type': a.action_type.value})
 
@@ -297,8 +293,6 @@ class NightRound(GameRound):
         for a in actions:
             if a.action_type in (ActionType.KILL, ActionType.SHOOT):
                 if a.action_type == ActionType.KILL and a.actor_id != designated_killer:
-                    continue
-                if a.actor_id in blocked:
                     continue
                 if a.target_id in healed:
                     logs.append({'target_id': a.target_id, 'action_type': a.action_type.value, 'result': 'healed'})
@@ -311,12 +305,18 @@ class NightRound(GameRound):
         # 4. DETECT
         for a in actions:
             if a.action_type == ActionType.DETECT:
-                if a.actor_id in blocked:
-                    continue
                 logs.append({'target_id': a.target_id, 'action_type': a.action_type.value})
 
         await self._autosave()
         return logs
+
+    def silenced_target_ids(self) -> list[int]:
+        actions = self._last_actions(self.night_actions)
+        return [
+            a.target_id for a in actions
+            if a.action_type == ActionType.SILENCE
+            and a.target_id in self.alive_player_ids()
+        ]
 
     def _target_options_for(self, actor_id: int, action_type: ActionType) -> list[int]:
         if action_type == ActionType.KILL:

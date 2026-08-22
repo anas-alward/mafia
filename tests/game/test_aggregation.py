@@ -92,10 +92,10 @@ async def test_silencer_keeps_both_actions():
     logs = await round_.resolve()
 
     assert players[2].status == PlayerStatus.ALIVE  # abandoned kill target survives
-    assert players[3].status == PlayerStatus.DEAD   # final kill target dies
+    assert players[3].status == PlayerStatus.ALIVE  # healed — silence no longer blocks
     assert {'target_id': 2, 'action_type': 'silence'} in logs
     kill_logs = [entry for entry in logs if entry['action_type'] == 'kill']
-    assert kill_logs == [{'target_id': 4, 'action_type': 'kill'}]
+    assert kill_logs == [{'target_id': 4, 'action_type': 'kill', 'result': 'healed'}]
 
 
 @pytest.mark.asyncio
@@ -169,3 +169,19 @@ async def test_revenge_dedup():
     assert players[3].status == PlayerStatus.DEAD   # final revenge target dies
     revenge_logs = [entry for entry in logs if entry['action_type'] == 'revenge']
     assert revenge_logs == [{'actor_id': 2, 'target_id': 4, 'action_type': 'revenge'}]
+
+
+def test_silenced_target_ids():
+    players = [
+        Player(id=1, role=MafiaSilencer()),
+        Player(id=2, role=TownVanilla()),
+        Player(id=3, role=TownVanilla(), status=PlayerStatus.DEAD),
+    ]
+
+    living = NightRound(round_number=1, members=players, phase=Phase.NIGHT)
+    living.night_actions.append(Action(actor_id=1, target_id=2, action_type=ActionType.SILENCE))
+    assert living.silenced_target_ids() == [2]
+
+    dead = NightRound(round_number=1, members=players, phase=Phase.NIGHT)
+    dead.night_actions.append(Action(actor_id=1, target_id=3, action_type=ActionType.SILENCE))
+    assert dead.silenced_target_ids() == []
