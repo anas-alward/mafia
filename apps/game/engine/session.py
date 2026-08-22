@@ -24,6 +24,8 @@ class GameSession:
     rounds: list[GameRound] = field(default_factory=list)
     players: list[Player] = field(default_factory=list)
 
+    silenced_player_ids: list[int] = field(default_factory=list)
+
     key_prefix: str = 'mafia:session:'
 
     # -------------------------
@@ -72,6 +74,7 @@ class GameSession:
             'room_id': self.room_id,
             'players': [p.to_dict() for p in self.players],
             'rounds': [r.to_dict() for r in self.rounds],
+            'silenced_player_ids': self.silenced_player_ids,
         }
 
     @classmethod
@@ -81,6 +84,7 @@ class GameSession:
             id=data['id'],
             room_id=data['room_id'],
             players=[Player.from_dict(p) for p in data['players']],
+            silenced_player_ids=data.get('silenced_player_ids', []),
             key_prefix=key_prefix,
         )
         session.rounds = [GameRound.from_dict(r, session=session) for r in data['rounds']]
