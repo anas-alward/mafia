@@ -11,7 +11,7 @@ wheels/
 
 # Environment
 .env
-specs
+/specs
 .specify
 http
 
