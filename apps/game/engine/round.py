@@ -457,7 +457,14 @@ class VoteResultRound(GameRound):
             target = self._get_player(self.lynch_target_id)
             if target:
                 target.status = PlayerStatus.DEAD
-            logs.append({'actor_id': self.lynch_target_id, 'target_id': None, 'action_type': ActionType.LYNCH.value})
+            logs.append({
+                'actor_id': self.lynch_target_id,
+                'target_id': None,
+                'action_type': ActionType.LYNCH.value,
+                # Role reveal — the lynched player's card is shown to everyone.
+                'role_code': target.role.code if target and target.role else None,
+                'role_name': target.role.name if target and target.role else None,
+            })
 
             for a in actions:
                 if a.action_type == ActionType.REVENGE:
