@@ -177,10 +177,15 @@ class RealtimeConsumer(EventDispatchMixin, AsyncJsonWebsocketConsumer):
         if game_session is not None:
             current_round = game_session.current_round()
 
-            players_public = [
-                {'id': p.id, 'code': p.code, 'status': p.status.value}
-                for p in game_session.players
-            ]
+            players_public = []
+            for p in game_session.players:
+                entry = {'id': p.id, 'code': p.code, 'status': p.status.value}
+                if p.status == PlayerStatus.DEAD and p.role is not None:
+                    # Role reveal persists in game state so reconnecting
+                    # clients keep dead players' roles.
+                    entry['role_code'] = p.role.code
+                    entry['role_name'] = p.role.name
+                players_public.append(entry)
             live_ids = [p.id for p in game_session.players if p.status == PlayerStatus.ALIVE]
             dead_ids = [p.id for p in game_session.players if p.status == PlayerStatus.DEAD]
 

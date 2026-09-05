@@ -300,7 +300,13 @@ class NightRound(GameRound):
                     target = self._get_player(a.target_id)
                     if target:
                         target.status = PlayerStatus.DEAD
-                    logs.append({'target_id': a.target_id, 'action_type': a.action_type.value})
+                    logs.append({
+                        'target_id': a.target_id,
+                        'action_type': a.action_type.value,
+                        # Role reveal — dead players' cards are shown to everyone.
+                        'role_code': target.role.code if target and target.role else None,
+                        'role_name': target.role.name if target and target.role else None,
+                    })
 
         # 4. DETECT
         for a in actions:
@@ -471,7 +477,14 @@ class VoteResultRound(GameRound):
                     revenge_target = self._get_player(a.target_id)
                     if revenge_target:
                         revenge_target.status = PlayerStatus.DEAD
-                    logs.append({'actor_id': a.actor_id, 'target_id': a.target_id, 'action_type': a.action_type.value})
+                    logs.append({
+                        'actor_id': a.actor_id,
+                        'target_id': a.target_id,
+                        'action_type': a.action_type.value,
+                        # Role reveal — dead players' cards are shown to everyone.
+                        'role_code': revenge_target.role.code if revenge_target and revenge_target.role else None,
+                        'role_name': revenge_target.role.name if revenge_target and revenge_target.role else None,
+                    })
 
         await self._autosave()
         return logs

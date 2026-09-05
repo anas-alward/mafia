@@ -49,7 +49,9 @@ async def test_night_change_of_mind_kill():
     assert players[1].status == PlayerStatus.ALIVE  # first target survives
     assert players[2].status == PlayerStatus.DEAD   # final target dies
     kill_logs = [entry for entry in logs if entry['action_type'] == 'kill']
-    assert kill_logs == [{'target_id': 3, 'action_type': 'kill'}]
+    assert kill_logs == [
+        {'target_id': 3, 'action_type': 'kill', 'role_code': 'vanilla', 'role_name': 'Vanilla Townie'}
+    ]
 
 
 @pytest.mark.asyncio
@@ -116,7 +118,9 @@ async def test_non_designated_killer_ignored():
     assert players[2].status == PlayerStatus.DEAD   # Godfather's target dies
     assert players[3].status == PlayerStatus.ALIVE  # Silencer's kill ignored
     kill_logs = [entry for entry in logs if entry['action_type'] == 'kill']
-    assert kill_logs == [{'target_id': 3, 'action_type': 'kill'}]
+    assert kill_logs == [
+        {'target_id': 3, 'action_type': 'kill', 'role_code': 'vanilla', 'role_name': 'Vanilla Townie'}
+    ]
 
 
 @pytest.mark.asyncio
@@ -168,7 +172,15 @@ async def test_revenge_dedup():
     assert players[2].status == PlayerStatus.ALIVE  # abandoned revenge target survives
     assert players[3].status == PlayerStatus.DEAD   # final revenge target dies
     revenge_logs = [entry for entry in logs if entry['action_type'] == 'revenge']
-    assert revenge_logs == [{'actor_id': 2, 'target_id': 4, 'action_type': 'revenge'}]
+    assert revenge_logs == [
+        {
+            'actor_id': 2,
+            'target_id': 4,
+            'action_type': 'revenge',
+            'role_code': 'vanilla',
+            'role_name': 'Vanilla Townie',
+        }
+    ]
 
 
 def test_silenced_target_ids():
