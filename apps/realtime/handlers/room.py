@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from apps.core.webrtc import webrtc_client
+from apps.core.livekit import livekit_client
 from apps.room.session import RoomMember
 
 from ..dispatch import on, trampoline
@@ -184,7 +184,7 @@ async def join_request_accepted(consumer: RealtimeConsumer, event: dict) -> None
 
     await consumer.groups.join(RoomActive(room_code=consumer.code))
 
-    credentials = webrtc_client.add_participant(
+    credentials = livekit_client.add_participant(
         meeting_id=consumer.session.meeting_id,
         participant_id=str(consumer.user.id),
         name=consumer.user.username,

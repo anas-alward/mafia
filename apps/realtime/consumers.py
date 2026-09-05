@@ -27,7 +27,7 @@ from typing import Any
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.core.exceptions import PermissionDenied
 
-from apps.core.webrtc import webrtc_client
+from apps.core.livekit import livekit_client
 from apps.game.engine.constants import PlayerStatus
 from apps.game.engine.roles.type import RoleType
 from apps.game.engine.session import GameSession
@@ -164,7 +164,7 @@ class RealtimeConsumer(EventDispatchMixin, AsyncJsonWebsocketConsumer):
 
         await self.accept()
 
-        credentials = webrtc_client.add_participant(
+        credentials = livekit_client.add_participant(
             meeting_id=self.session.meeting_id,
             participant_id=str(self.user.id),
             name=self.user.username,

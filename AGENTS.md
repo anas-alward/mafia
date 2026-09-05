@@ -2,13 +2,13 @@
 
 ## Project Overview
 
-Mafia is a real-time multiplayer social deduction game built with **Django 6.x** and **Django Channels**. Players join rooms, get assigned roles (mafia, villager, detective, doctor), and play through rounds with WebRTC video meetings powered by Cloudflare Calls.
+Mafia is a real-time multiplayer social deduction game built with **Django 6.x** and **Django Channels**. Players join rooms, get assigned roles (mafia, villager, detective, doctor), and play through rounds with WebRTC video meetings powered by a self-hosted LiveKit server.
 
 - **Backend:** Django 6.x + Daphne (ASGI) + Django Channels for WebSockets
 - **API:** Django REST Framework + SimpleJWT for token auth
 - **Database:** PostgreSQL for persistence, Redis for channels/cache/game state
 - **Async tasks:** Celery (email sending via Mailjet)
-- **WebRTC:** Cloudflare Calls API
+- **WebRTC:** LiveKit (self-hosted via Docker; backend mints participant tokens)
 - **Development environment:** Docker Compose (Python 3.14, dependencies managed by uv inside the container)
 
 ## Setup
@@ -16,7 +16,7 @@ Mafia is a real-time multiplayer social deduction game built with **Django 6.x**
 Everything runs through Docker Compose. You never need to install Python, uv, or any dependencies locally.
 
 ```bash
-# Create .env with required API keys (Mailjet, Cloudflare)
+# Create .env with required API keys (Mailjet, LiveKit)
 # See config/settings.py for all available variables
 cp .env.example .env
 
@@ -62,7 +62,7 @@ docker compose exec app uv run mypy .
 ```
 mafia/
 ├── config/               # Django project config (settings, urls, asgi, celery)
-│   ├── settings.py       # Main settings (DB, Redis, Channels, JWT, Celery, Mailjet, Cloudflare)
+│   ├── settings.py       # Main settings (DB, Redis, Channels, JWT, Celery, Mailjet, LiveKit)
 │   ├── urls.py           # Root URLconf: /admin/ and /api/
 │   ├── api.py            # API URL aggregation (accounts, rooms, friends)
 │   ├── asgi.py           # ASGI: HTTP + WebSocket with JWTAuthMiddleware
@@ -105,7 +105,7 @@ mafia/
 │   │   └── error_codes.py
 │   └── core/             # Shared utilities
 │       ├── redis.py      # Redis client singleton
-│       ├── webrtc.py     # Cloudflare Calls API wrapper
+│       ├── livekit.py    # LiveKit token minting (room names, participant JWTs)
 │       └── utils/        # UUID generation, pagination, error helpers, validators
 └── tests/                # Test suite (pytest-django)
     ├── conftest.py       # Shared fixtures (api_client, test users)

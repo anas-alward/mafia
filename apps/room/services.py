@@ -5,8 +5,9 @@ from __future__ import annotations
 from django.contrib.auth import get_user_model
 from django.db import models
 
+from apps.core.livekit import livekit_client
+
 from .models import Room
-from apps.core.webrtc import webrtc_client
 
 User = get_user_model()
 
@@ -21,7 +22,7 @@ class RoomService:
             host=host,
             name=name,
         )
-        meeting_id = webrtc_client.create_meeting(room.name)
+        meeting_id = livekit_client.create_meeting(room.code)
         room.meeting_id = meeting_id
         room.save(update_fields=['meeting_id'])
         return room

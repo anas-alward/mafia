@@ -1,0 +1,13 @@
+# LiveKit media server — local development config
+# Docs: https://docs.livekit.io/home/self-hosting/deployment.html
+
+port: 7880
+
+rtc:
+  tcp_port: 7881
+  # Single UDP port muxing — fine for local dev, avoids mapping large port ranges
+  udp_port: 7882
+  use_external_ip: false
+
+logging:
+  level: info
