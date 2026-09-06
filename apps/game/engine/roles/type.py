@@ -50,12 +50,10 @@ class TownVigilante(BaseRole):
     code = "vigilante"
     role_type = RoleType.TOWN
     name = "Azure Vigilante"
-    description = "Can choose to eliminate a player at night, but has limited ammo."
+    description = "May shoot one player during the day instead of voting (2 bullets). Shooting a Town player eliminates the Vigilante too."
     actions = {
-        Phase.NIGHT: [
-            ActionConfig(action_type=ActionType.SHOOT, required=False),
-        ],
         Phase.DAY: [
+            ActionConfig(action_type=ActionType.SHOOT, required=False),
             ActionConfig(action_type=ActionType.VOTE, required=True),
         ],
     }
@@ -92,13 +90,19 @@ class MafiaGodfather(BaseRole):
     code = "godfather"
     role_type = RoleType.MAFIA
     name = "Mafia King"
-    description = "The leader of the Mafia. Appears as 'Town' if investigated by the Cop."
+    description = "The leader of the Mafia. Appears as 'Town' if investigated by the Cop. When killed, takes an enemy down with him."
     actions = {
         Phase.NIGHT: [
             ActionConfig(action_type=ActionType.KILL, required=True, priority=1),
         ],
         Phase.DAY: [
             ActionConfig(action_type=ActionType.VOTE, required=True),
+        ],
+        # Dying revenge: when the King is killed at night, he acts in the
+        # following vote-result phase (entitlement recorded by the night
+        # resolve in session.pending_dying_revenge).
+        Phase.VOTE_RESULT: [
+            ActionConfig(action_type=ActionType.REVENGE, required=True),
         ],
     }
 

@@ -26,6 +26,11 @@ class GameSession:
 
     silenced_player_ids: list[int] = field(default_factory=list)
 
+    """Players entitled to a dying revenge (e.g. the Mafia King killed at
+    night): they act in the following vote-result round, then the list
+    clears."""
+    pending_dying_revenge: list[int] = field(default_factory=list)
+
     key_prefix: str = 'mafia:session:'
 
     # -------------------------
@@ -75,6 +80,7 @@ class GameSession:
             'players': [p.to_dict() for p in self.players],
             'rounds': [r.to_dict() for r in self.rounds],
             'silenced_player_ids': self.silenced_player_ids,
+            'pending_dying_revenge': self.pending_dying_revenge,
         }
 
     @classmethod
@@ -85,6 +91,7 @@ class GameSession:
             room_id=data['room_id'],
             players=[Player.from_dict(p) for p in data['players']],
             silenced_player_ids=data.get('silenced_player_ids', []),
+            pending_dying_revenge=data.get('pending_dying_revenge', []),
             key_prefix=key_prefix,
         )
         session.rounds = [GameRound.from_dict(r, session=session) for r in data['rounds']]

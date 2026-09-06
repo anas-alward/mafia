@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 from apps.core.livekit import livekit_client
 from apps.core.utils.uuid import generate_code
 from apps.game.engine.action import Action
-from apps.game.engine.constants import ActionType, Phase, PlayerStatus
+from apps.game.engine.constants import ActionType, Phase, PlayerStatus, VIGILANTE_AMMO
 from apps.game.engine.roles.type import (
     MafiaGodfather,
     MafiaMember,
@@ -23,6 +23,7 @@ from apps.game.engine.roles.type import (
     RoleType,
     TownCop,
     TownDoctor,
+    TownVigilante,
 )
 from apps.game.engine.round import GRACE_SECONDS
 from apps.game.engine.session import GameSession
@@ -119,6 +120,23 @@ async def handle_vote(consumer: RealtimeConsumer, event: Vote, *, game_session: 
     )
 
 
+async def emit_action_done(
+    consumer: RealtimeConsumer,
+    game_session: GameSession,
+    action_type: ActionType,
+) -> None:
+    """Tell every player, anonymously, that one phase requirement is done.
+
+    Emitted right after a night/vote-result action is accepted so all
+    clients can hide the corresponding phase-requirement icon in real time
+    without learning who acted.
+    """
+    await consumer.groups.emit(
+        GameSessionGroup(room_code=consumer.code, session_id=game_session.id),
+        NightAction(action_type=action_type.value),
+    )
+
+
 @on(Kill)
 @game_session(on_none="error")
 @require_phase(Phase.NIGHT)
@@ -128,6 +146,7 @@ async def handle_kill(consumer: RealtimeConsumer, event: Kill, *, game_session: 
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.KILL)
     )
+    await emit_action_done(consumer, game_session, ActionType.KILL)
     await consumer.groups.emit(
         GameSessionRole(
             room_code=consumer.code,
@@ -153,6 +172,7 @@ async def handle_revenge(consumer: RealtimeConsumer, event: Revenge, *, game_ses
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.REVENGE)
     )
+    await emit_action_done(consumer, game_session, ActionType.REVENGE)
     await emit_action_signal(
         consumer, game_session, ActionType.REVENGE, consumer.user.id, event.target_id
     )
@@ -168,6 +188,7 @@ async def handle_heal(consumer: RealtimeConsumer, event: Heal, *, game_session: 
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.HEAL)
     )
+    await emit_action_done(consumer, game_session, ActionType.HEAL)
     await emit_action_signal(
         consumer, game_session, ActionType.HEAL, consumer.user.id, event.target_id
     )
@@ -176,16 +197,20 @@ async def handle_heal(consumer: RealtimeConsumer, event: Heal, *, game_session: 
 
 @on(Shoot)
 @game_session(on_none="error")
-@require_phase(Phase.NIGHT)
+@require_phase(Phase.DAY)
+@require_role(TownVigilante)
 @is_alive
 async def handle_shoot(consumer: RealtimeConsumer, event: Shoot, *, game_session: GameSession) -> None:
-    await game_session.current_round().add_action(
+    round_ = game_session.current_round()
+    if round_._shoot_uses(consumer.user.id) >= VIGILANTE_AMMO:
+        await consumer.send_error(ErrorCode.INVALID_ACTION, 'No ammo left')
+        return
+    await round_.add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.SHOOT)
     )
     await emit_action_signal(
         consumer, game_session, ActionType.SHOOT, consumer.user.id, event.target_id
     )
-    await _try_auto_transition_night(consumer, game_session)
 
 
 @on(Detect)
@@ -205,6 +230,7 @@ async def handle_detect(consumer: RealtimeConsumer, event: Detect, *, game_sessi
     await round_.add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.DETECT)
     )
+    await emit_action_done(consumer, game_session, ActionType.DETECT)
 
     target = next((p for p in game_session.players if p.id == event.target_id), None)
     if target is not None and target.role is not None:
@@ -230,6 +256,7 @@ async def handle_silence(consumer: RealtimeConsumer, event: Silence, *, game_ses
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.SILENCE)
     )
+    await emit_action_done(consumer, game_session, ActionType.SILENCE)
     await consumer.groups.emit(
         GameSessionRole(
             room_code=consumer.code,

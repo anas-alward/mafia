@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from apps.core.redis import redis_client
 
 from .action import Action
-from .constants import ActionType, Phase, PlayerStatus
+from .constants import ActionType, Phase, PlayerStatus, VIGILANTE_AMMO
 from .player import Player
 
 if TYPE_CHECKING:
@@ -110,6 +110,30 @@ class GameRound:
             if a.action_type == ActionType.VOTE and a.target_id is not None:
                 latest[a.actor_id] = a
         return [a.actor_id for a in latest.values() if a.target_id == target_id]
+
+    def _record_dying_revenge(self, target: Player) -> None:
+        """Entitle a victim whose role carries vote-result revenge actions
+        (e.g. the Mafia King) to act in the following vote-result round."""
+        if self._session is None or target.role is None:
+            return
+        if any(
+            cfg.action_type == ActionType.REVENGE
+            for cfg in target.role.actions.get(Phase.VOTE_RESULT, [])
+        ):
+            self._session.pending_dying_revenge.append(target.id)
+
+    def _shoot_uses(self, player_id: int) -> int:
+        """Total SHOOT actions the player has spent across the whole game."""
+        uses = 0
+        if self._session is not None:
+            for r in self._session.rounds:
+                uses += sum(
+                    1
+                    for a in r._get_actions_list()
+                    if a.actor_id == player_id
+                    and a.action_type == ActionType.SHOOT
+                )
+        return uses
 
     async def requirement_summary(self) -> list[dict]:
         """Anonymous per-action-type completion status for this phase.
@@ -337,10 +361,10 @@ class NightRound(GameRound):
                 healed.add(a.target_id)
                 logs.append({'target_id': a.target_id, 'action_type': a.action_type.value})
 
-        # 3. OFFENSIVE ACTIONS (KILL / SHOOT)
+        # 3. OFFENSIVE ACTIONS (KILL)
         for a in actions:
-            if a.action_type in (ActionType.KILL, ActionType.SHOOT):
-                if a.action_type == ActionType.KILL and a.actor_id != designated_killer:
+            if a.action_type == ActionType.KILL:
+                if a.actor_id != designated_killer:
                     continue
                 if a.target_id in healed:
                     logs.append({'target_id': a.target_id, 'action_type': a.action_type.value, 'result': 'healed'})
@@ -348,6 +372,7 @@ class NightRound(GameRound):
                     target = self._get_player(a.target_id)
                     if target:
                         target.status = PlayerStatus.DEAD
+                        self._record_dying_revenge(target)
                     logs.append({
                         'target_id': a.target_id,
                         'action_type': a.action_type.value,
@@ -412,6 +437,40 @@ class DayRound(GameRound):
             if player.status == PlayerStatus.ALIVE:
                 self.obligations[player.id] = [ActionType.VOTE]
 
+    def _vigilante_id(self) -> int | None:
+        """The alive player whose role carries an optional day shot."""
+        for p in self.members:
+            if p.status != PlayerStatus.ALIVE or p.role is None:
+                continue
+            day_actions = p.role.actions.get(Phase.DAY, [])
+            if any(
+                cfg.action_type == ActionType.SHOOT and not cfg.required
+                for cfg in day_actions
+            ):
+                return p.id
+        return None
+
+    def get_required_actions_for_player(self, player_id: int) -> list[dict]:
+        result = super().get_required_actions_for_player(player_id)
+        # The vigilante's optional day shot, while ammo lasts.
+        if (
+            player_id == self._vigilante_id()
+            and self._shoot_uses(player_id) < VIGILANTE_AMMO
+        ):
+            result.append({
+                'action_type': ActionType.SHOOT.value,
+                'target_options': [
+                    pid for pid in self.alive_player_ids() if pid != player_id
+                ],
+            })
+        return result
+
+    async def is_player_done(self, player_id: int) -> bool:
+        # A day shot replaces the vote for the vigilante.
+        if await super().is_player_done(player_id):
+            return True
+        return await self.has_submitted_action(player_id, ActionType.SHOOT)
+
     async def resolve(self) -> list[dict]:
         await self._merge_pending_actions()
         actions = self._last_actions(self.day_actions)
@@ -437,6 +496,43 @@ class DayRound(GameRound):
             )
             logs.append({'actor_id': lynch, 'target_id': None, 'action_type': ActionType.LYNCH.value})
 
+        # Day shots (vigilante): the victim dies with a public role reveal.
+        # Shooting a Town player eliminates the vigilante as well. Shooting
+        # a role with vote-result revenge actions entitles that victim.
+        for a in actions:
+            if a.action_type != ActionType.SHOOT:
+                continue
+            target = self._get_player(a.target_id)
+            if target is None or target.status != PlayerStatus.ALIVE:
+                continue
+            target.status = PlayerStatus.DEAD
+            logs.append({
+                'actor_id': a.actor_id,
+                'target_id': a.target_id,
+                'action_type': a.action_type.value,
+                'role_code': target.role.code if target.role else None,
+                'role_name': target.role.name if target.role else None,
+            })
+            self._record_dying_revenge(target)
+            # Town penalty: shooting a Town player costs the vigilante
+            # their own life; shooting mafia is safe.
+            actor = self._get_player(a.actor_id)
+            if (
+                actor is not None
+                and actor.status == PlayerStatus.ALIVE
+                and target.role is not None
+                and target.role.role_type.value == 'town'
+                and actor.role is not None
+                and actor.role.role_type.value == 'town'
+                and actor.id != target.id
+            ):
+                actor.status = PlayerStatus.DEAD
+                logs.append({
+                    'actor_id': None,
+                    'target_id': a.actor_id,
+                    'action_type': 'died',
+                })
+
         await self._autosave()
         return logs
 
@@ -458,7 +554,10 @@ class DayRound(GameRound):
     # ------------------------------------------------------------------
 
     async def voter_ids(self) -> set[int]:
-        """Return the set of actor IDs who have voted this round."""
+        """Return the set of actor IDs who have voted this round.
+
+        A vigilante day shot replaces the vote, so shoot-actors count too.
+        """
         voters: set[int] = set()
         for a in self.day_actions:
             if a.action_type == ActionType.VOTE:
@@ -467,7 +566,7 @@ class DayRound(GameRound):
             pending_raw = await redis_client.lrange(self._session.pending_actions_key, 0, -1)
             for raw in pending_raw:
                 a = Action.from_dict(json.loads(raw))
-                if a.action_type == ActionType.VOTE:
+                if a.action_type in (ActionType.VOTE, ActionType.SHOOT):
                     voters.add(a.actor_id)
         return voters
 
@@ -489,8 +588,9 @@ class VoteResultRound(GameRound):
 
     def compute_obligations(self) -> None:
         self.obligations = {}
-        if self.lynch_target_id is None:
-            return
+        # Dying-revenge entitlements (e.g. the Mafia King killed at night)
+        # act in this round, even though they are already dead.
+        dying_ids = self._session.pending_dying_revenge if self._session else []
         for player in self.members:
             if player.role is None:
                 continue
@@ -499,6 +599,8 @@ class VoteResultRound(GameRound):
                 for cfg in role_actions:
                     if cfg.required:
                         self.obligations.setdefault(player.id, []).append(cfg.action_type)
+            elif player.id in dying_ids:
+                self.obligations.setdefault(player.id, []).append(ActionType.REVENGE)
 
     async def resolve(self) -> list[dict]:
         await self._merge_pending_actions()
@@ -518,19 +620,23 @@ class VoteResultRound(GameRound):
                 'role_name': target.role.name if target and target.role else None,
             })
 
-            for a in actions:
-                if a.action_type == ActionType.REVENGE:
-                    revenge_target = self._get_player(a.target_id)
-                    if revenge_target:
-                        revenge_target.status = PlayerStatus.DEAD
-                    logs.append({
-                        'actor_id': a.actor_id,
-                        'target_id': a.target_id,
-                        'action_type': a.action_type.value,
-                        # Role reveal — dead players' cards are shown to everyone.
-                        'role_code': revenge_target.role.code if revenge_target and revenge_target.role else None,
-                        'role_name': revenge_target.role.name if revenge_target and revenge_target.role else None,
-                    })
+        for a in actions:
+            if a.action_type == ActionType.REVENGE:
+                revenge_target = self._get_player(a.target_id)
+                if revenge_target:
+                    revenge_target.status = PlayerStatus.DEAD
+                logs.append({
+                    'actor_id': a.actor_id,
+                    'target_id': a.target_id,
+                    'action_type': a.action_type.value,
+                    # Role reveal — dead players' cards are shown to everyone.
+                    'role_code': revenge_target.role.code if revenge_target and revenge_target.role else None,
+                    'role_name': revenge_target.role.name if revenge_target and revenge_target.role else None,
+                })
+
+        # The dying-revenge entitlement is consumed this round.
+        if self._session is not None:
+            self._session.pending_dying_revenge = []
 
         await self._autosave()
         return logs

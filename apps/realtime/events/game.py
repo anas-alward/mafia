@@ -174,8 +174,14 @@ class ActionSignal(OutboundEvent):
 
 
 class NightAction(OutboundEvent):
+    """Night-action notification.
+
+    Sent with actor/target to a scoped audience (e.g. the mafia role group)
+    and anonymously (ids stripped) to the whole session group so every
+    client can hide the corresponding phase requirement in real time.
+    """
     channel_type: ClassVar[str] = GameEvents.NIGHT_ACTION
-    actor_id: int
+    actor_id: int | None = None
     target_id: int | None = None
     action_type: str
 

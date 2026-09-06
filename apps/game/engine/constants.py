@@ -32,6 +32,10 @@ class SignalAudience(StrEnum):
     MAFIA_ONLY = 'mafia_only'  # alive mafia members, actor identity hidden
 
 
+# Town Vigilante: total shots available per game.
+VIGILANTE_AMMO = 2
+
+
 from dataclasses import dataclass
 
 
