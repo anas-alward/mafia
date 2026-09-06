@@ -63,7 +63,6 @@ ROLE_COMPOSITIONS: dict[int, list[type]] = {
         TownBomb,
         TownVanilla,
         TownVanilla,
-        TownVanilla,
         MafiaGodfather,
         MafiaSilencer,
         MafiaMember,
@@ -113,6 +112,10 @@ class RoleDistributor:
 
         composition = ROLE_COMPOSITIONS.get(count)
         if composition is None:
+            raise UndefinedPlayerCountError(count)
+        # Guard against a mis-sized table entry: zip() would silently drop
+        # roles (or players) when the composition length is off.
+        if len(composition) != count:
             raise UndefinedPlayerCountError(count)
 
         roles = composition.copy()

@@ -494,7 +494,15 @@ class DayRound(GameRound):
             self.day_actions.append(
                 Action(actor_id=lynch, target_id=None, action_type=ActionType.LYNCH)
             )
-            logs.append({'actor_id': lynch, 'target_id': None, 'action_type': ActionType.LYNCH.value})
+            lynched = self._get_player(lynch)
+            logs.append({
+                'actor_id': lynch,
+                'target_id': None,
+                'action_type': ActionType.LYNCH.value,
+                # Role reveal — the lynched player's card is shown to everyone.
+                'role_code': lynched.role.code if lynched and lynched.role else None,
+                'role_name': lynched.role.name if lynched and lynched.role else None,
+            })
 
         # Day shots (vigilante): the victim dies with a public role reveal.
         # Shooting a Town player eliminates the vigilante as well. Shooting
@@ -531,6 +539,9 @@ class DayRound(GameRound):
                     'actor_id': None,
                     'target_id': a.actor_id,
                     'action_type': 'died',
+                    # Role reveal — dead players' cards are shown to everyone.
+                    'role_code': actor.role.code if actor.role else None,
+                    'role_name': actor.role.name if actor.role else None,
                 })
 
         await self._autosave()
