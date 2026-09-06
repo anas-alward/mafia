@@ -70,6 +70,22 @@ class RoomActive(GroupScope):
 
 
 @dataclass(frozen=True, slots=True)
+class UserGroup(GroupScope):
+    """Personal channel for one user.
+
+    Targeted, per-recipient events (e.g. action signals whose audience
+    is decided backend-side) are emitted here instead of a shared group.
+    Consumers join their own UserGroup on connect.
+    """
+
+    user_id: int
+
+    @property
+    def name(self) -> str:
+        return f'user.{self.user_id}'
+
+
+@dataclass(frozen=True, slots=True)
 class RoomSpectators(GroupScope):
     """Users watching a room without being seated members.
 

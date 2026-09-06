@@ -15,8 +15,8 @@ both together: `self.groups.join(scope)` to subscribe, then
 
 from __future__ import annotations
 
-from .groups import GroupScope
 from .events import OutboundEvent
+from .groups import GroupScope
 
 
 class GroupMembership:

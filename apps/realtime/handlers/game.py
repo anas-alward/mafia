@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
+from apps.core.livekit import livekit_client
 from apps.core.utils.uuid import generate_code
 from apps.game.engine.action import Action
 from apps.game.engine.constants import ActionType, Phase, PlayerStatus
@@ -25,10 +26,13 @@ from apps.game.engine.roles.type import (
 )
 from apps.game.engine.round import GRACE_SECONDS
 from apps.game.engine.session import GameSession
+from apps.realtime.players import build_public_players
+from apps.realtime.signals import emit_action_signal
 
 from ..dispatch import on, trampoline
 from ..error_codes import ErrorCode
 from ..events.game import (
+    ActionSignal,
     CancelGame,
     Detect,
     DetectResult,
@@ -85,6 +89,7 @@ async def handle_start_game(consumer: RealtimeConsumer, event: StartGame) -> Non
     await session.set_game_session_id(game_id)
 
     alive_ids = [p.id for p in game_session.players if p.status == PlayerStatus.ALIVE]
+    players_public = await build_public_players(consumer.session, game_session)
     await consumer.groups.emit(
         RoomActive(room_code=consumer.code),
         GameStarted(
@@ -92,6 +97,7 @@ async def handle_start_game(consumer: RealtimeConsumer, event: StartGame) -> Non
             session_id=game_id,
             host=consumer.user.id,
             alive_ids=alive_ids,
+            players=players_public,
         ),
     )
 
@@ -107,6 +113,9 @@ async def handle_vote(consumer: RealtimeConsumer, event: Vote, *, game_session: 
     await consumer.groups.emit(
         GameSessionGroup(room_code=consumer.code, session_id=game_session.id),
         VoteCast(actor_id=consumer.user.id, target_id=event.target_id),
+    )
+    await emit_action_signal(
+        consumer, game_session, ActionType.VOTE, consumer.user.id, event.target_id
     )
 
 
@@ -131,6 +140,9 @@ async def handle_kill(consumer: RealtimeConsumer, event: Kill, *, game_session: 
             action_type=ActionType.KILL.value,
         ),
     )
+    await emit_action_signal(
+        consumer, game_session, ActionType.KILL, consumer.user.id, event.target_id
+    )
     await _try_auto_transition_night(consumer, game_session)
 
 
@@ -140,6 +152,9 @@ async def handle_kill(consumer: RealtimeConsumer, event: Kill, *, game_session: 
 async def handle_revenge(consumer: RealtimeConsumer, event: Revenge, *, game_session: GameSession) -> None:
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.REVENGE)
+    )
+    await emit_action_signal(
+        consumer, game_session, ActionType.REVENGE, consumer.user.id, event.target_id
     )
     await _try_auto_transition_vote_result(consumer, game_session)
 
@@ -153,6 +168,9 @@ async def handle_heal(consumer: RealtimeConsumer, event: Heal, *, game_session: 
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.HEAL)
     )
+    await emit_action_signal(
+        consumer, game_session, ActionType.HEAL, consumer.user.id, event.target_id
+    )
     await _try_auto_transition_night(consumer, game_session)
 
 
@@ -163,6 +181,9 @@ async def handle_heal(consumer: RealtimeConsumer, event: Heal, *, game_session: 
 async def handle_shoot(consumer: RealtimeConsumer, event: Shoot, *, game_session: GameSession) -> None:
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.SHOOT)
+    )
+    await emit_action_signal(
+        consumer, game_session, ActionType.SHOOT, consumer.user.id, event.target_id
     )
     await _try_auto_transition_night(consumer, game_session)
 
@@ -221,6 +242,9 @@ async def handle_silence(consumer: RealtimeConsumer, event: Silence, *, game_ses
             action_type=ActionType.SILENCE.value,
         ),
     )
+    await emit_action_signal(
+        consumer, game_session, ActionType.SILENCE, consumer.user.id, event.target_id
+    )
     await _try_auto_transition_night(consumer, game_session)
 
 
@@ -271,6 +295,11 @@ async def handle_submit_votes(consumer: RealtimeConsumer, event: SubmitVotes, *,
 @game_session(on_none="error")
 async def handle_reset_game(consumer: RealtimeConsumer, event: ResetGame, *, game_session: GameSession) -> None:
     player_ids = [p.id for p in game_session.players]
+    await _apply_voice_state(
+        game_session,
+        restore_ids=game_session.silenced_player_ids,
+        silence_ids=[],
+    )
     await game_session.flush()
 
     game_id = generate_code(length=16)
@@ -281,6 +310,7 @@ async def handle_reset_game(consumer: RealtimeConsumer, event: ResetGame, *, gam
     await consumer.session.set_game_session_id(game_id)
 
     alive_ids = [p.id for p in new_session.players if p.status == PlayerStatus.ALIVE]
+    players_public = await build_public_players(consumer.session, new_session)
     await consumer.groups.emit(
         RoomActive(room_code=consumer.code),
         GameReset(
@@ -288,6 +318,7 @@ async def handle_reset_game(consumer: RealtimeConsumer, event: ResetGame, *, gam
             session_id=game_id,
             host=consumer.user.id,
             alive_ids=alive_ids,
+            players=players_public,
         ),
     )
 
@@ -296,6 +327,11 @@ async def handle_reset_game(consumer: RealtimeConsumer, event: ResetGame, *, gam
 @is_host
 @game_session(on_none="error")
 async def handle_cancel_game(consumer: RealtimeConsumer, event: CancelGame, *, game_session: GameSession) -> None:
+    await _apply_voice_state(
+        game_session,
+        restore_ids=game_session.silenced_player_ids,
+        silence_ids=[],
+    )
     await game_session.flush()
     await consumer.session.clear_game_session_id()
     await consumer.groups.emit(
@@ -319,16 +355,20 @@ async def game_started(
             GameSessionGroup(room_code=consumer.code, session_id=event['session_id'])
         )
     required_actions: list[dict[str, Any]] = []
+    round_requirements: list[dict[str, Any]] = []
     if game_session is not None and consumer.user.id in event['player_ids']:
         round_ = game_session.current_round()
         required_actions = round_.get_required_actions_for_player(consumer.user.id)
+        round_requirements = await round_.requirement_summary()
     await consumer.send_json(
         GameStarted(
             player_ids=event['player_ids'],
             session_id=event['session_id'],
             host=event['host'],
             alive_ids=event['alive_ids'],
+            players=event.get('players', []),
             required_actions=required_actions,
+            round_requirements=round_requirements,
         ).to_json()
     )
     # Send each player their assigned role privately, then the initial
@@ -366,7 +406,12 @@ async def game_started(
                     )
                 break
         await consumer.send_json(
-            SunRise(player_ids=event['alive_ids'], logs=[], required_actions=required_actions).to_json()
+            SunRise(
+                player_ids=event['alive_ids'],
+                logs=[],
+                required_actions=required_actions,
+                round_requirements=round_requirements,
+            ).to_json()
         )
 
 
@@ -374,14 +419,17 @@ async def game_started(
 @game_session(on_none="continue")
 async def sun_set(consumer: RealtimeConsumer, event: dict, *, game_session: GameSession | None) -> None:
     required_actions: list[dict[str, Any]] = []
+    round_requirements: list[dict[str, Any]] = []
     if game_session is not None:
         round_ = game_session.current_round()
         required_actions = round_.get_required_actions_for_player(consumer.user.id)
+        round_requirements = await round_.requirement_summary()
     await consumer.send_json(
         SunSet(
             player_ids=event['player_ids'],
             logs=event.get('logs', []),
             required_actions=required_actions,
+            round_requirements=round_requirements,
         ).to_json()
     )
 
@@ -390,14 +438,28 @@ async def sun_set(consumer: RealtimeConsumer, event: dict, *, game_session: Game
 @game_session(on_none="continue")
 async def sun_rise(consumer: RealtimeConsumer, event: dict, *, game_session: GameSession | None) -> None:
     required_actions: list[dict[str, Any]] = []
+    round_requirements: list[dict[str, Any]] = []
     if game_session is not None:
         round_ = game_session.current_round()
         required_actions = round_.get_required_actions_for_player(consumer.user.id)
+        round_requirements = await round_.requirement_summary()
     await consumer.send_json(
         SunRise(
             player_ids=event['player_ids'],
             logs=event.get('logs', []),
             required_actions=required_actions,
+            round_requirements=round_requirements,
+        ).to_json()
+    )
+
+
+@trampoline(GameEvents.ACTION_SIGNAL)
+async def action_signal(consumer: RealtimeConsumer, event: dict) -> None:
+    await consumer.send_json(
+        ActionSignal(
+            action_type=event['action_type'],
+            target_id=event['target_id'],
+            actor_id=event.get('actor_id'),
         ).to_json()
     )
 
@@ -426,14 +488,17 @@ async def vote_result_started(
     consumer: RealtimeConsumer, event: dict, *, game_session: GameSession | None
 ) -> None:
     required_actions: list[dict[str, Any]] = []
+    round_requirements: list[dict[str, Any]] = []
     if game_session is not None:
         round_ = game_session.current_round()
         required_actions = round_.get_required_actions_for_player(consumer.user.id)
+        round_requirements = await round_.requirement_summary()
     await consumer.send_json(
         VoteResultStarted(
             lynch_target_id=event['lynch_target_id'],
             logs=event.get('logs', []),
             required_actions=required_actions,
+            round_requirements=round_requirements,
         ).to_json()
     )
 
@@ -448,16 +513,20 @@ async def game_reset(
             GameSessionGroup(room_code=consumer.code, session_id=event['session_id'])
         )
     required_actions: list[dict[str, Any]] = []
+    round_requirements: list[dict[str, Any]] = []
     if game_session is not None and consumer.user.id in event['player_ids']:
         round_ = game_session.current_round()
         required_actions = round_.get_required_actions_for_player(consumer.user.id)
+        round_requirements = await round_.requirement_summary()
     await consumer.send_json(
         GameReset(
             player_ids=event['player_ids'],
             session_id=event['session_id'],
             host=event['host'],
             alive_ids=event['alive_ids'],
+            players=event.get('players', []),
             required_actions=required_actions,
+            round_requirements=round_requirements,
         ).to_json()
     )
     if game_session is not None and consumer.user.id in event['player_ids']:
@@ -493,7 +562,12 @@ async def game_reset(
                     )
                 break
         await consumer.send_json(
-            SunRise(player_ids=event['alive_ids'], logs=[], required_actions=required_actions).to_json()
+            SunRise(
+                player_ids=event['alive_ids'],
+                logs=[],
+                required_actions=required_actions,
+                round_requirements=round_requirements,
+            ).to_json()
         )
 
 
@@ -574,6 +648,24 @@ async def _try_auto_transition_vote_result(
     asyncio.create_task(_resolve_after_grace(consumer, game_session, Phase.VOTE_RESULT))
 
 
+async def _apply_voice_state(
+    game_session: GameSession,
+    restore_ids: list[int],
+    silence_ids: list[int],
+) -> None:
+    """Server-enforce the silenced set via the LiveKit RoomService API.
+
+    Silenced players have their microphone muted and their publish
+    permission restricted to the camera; restored players may unmute
+    themselves again.
+    """
+    meeting_id = livekit_client.create_meeting(game_session.room_id)
+    for pid in restore_ids:
+        await livekit_client.set_voice_allowed(meeting_id, str(pid), allowed=True)
+    for pid in silence_ids:
+        await livekit_client.set_voice_allowed(meeting_id, str(pid), allowed=False)
+
+
 async def _transition_after_resolve(
     game_session: GameSession,
     round_: object,
@@ -594,17 +686,37 @@ async def _transition_after_resolve(
             RoomActive(room_code=consumer.code),
             GameOver(winner=winner, player_ids=player_ids, logs=logs),
         )
+        await _apply_voice_state(
+            game_session,
+            restore_ids=game_session.silenced_player_ids,
+            silence_ids=[],
+        )
         await game_session.flush()
         await consumer.session.clear_game_session_id()
         return
 
     if round_.phase == Phase.NIGHT:
+        # The silencer's targets take effect now: muted through the day and
+        # vote-result phases, until the next night begins.
+        silenced = (
+            round_.silenced_target_ids()
+            if hasattr(round_, 'silenced_target_ids')
+            else []
+        )
+        game_session.silenced_player_ids = silenced
+        await game_session.save()
         await game_session.new_round(phase=Phase.DAY)
         alive_ids = [p.id for p in game_session.players if p.status == PlayerStatus.ALIVE]
         await consumer.groups.emit(group, SunRise(player_ids=alive_ids, logs=logs))
+        await _apply_voice_state(game_session, restore_ids=[], silence_ids=silenced)
     else:
-        # DAY (no lynch) or EXECUTION → transition to NIGHT.
+        # DAY (no lynch) or EXECUTION → transition to NIGHT. Last round's
+        # silences expire when the night begins.
+        expired = game_session.silenced_player_ids
+        game_session.silenced_player_ids = []
+        await game_session.save()
         await game_session.new_round(phase=Phase.NIGHT)
         alive_ids = [p.id for p in game_session.players if p.status == PlayerStatus.ALIVE]
         await consumer.groups.emit(group, SunSet(player_ids=alive_ids, logs=logs))
+        await _apply_voice_state(game_session, restore_ids=expired, silence_ids=[])
 

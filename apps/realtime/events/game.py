@@ -26,6 +26,7 @@ class GameEvents(StrEnum):
     SILENCE = 'silence'
     SUBMIT_NIGHT = 'submit_night'
     GAME_STATE = 'game_state'
+    ACTION_SIGNAL = 'action_signal'
     NIGHT_ACTION = 'night_action'
     RESET = 'reset'
     CANCEL = 'cancel'
@@ -95,6 +96,7 @@ class SunSet(OutboundEvent):
     player_ids: list[int]
     logs: list[dict[str, Any]]
     required_actions: list[dict[str, Any]] = []
+    round_requirements: list[dict[str, Any]] = []
 
 
 class SunRise(OutboundEvent):
@@ -102,6 +104,7 @@ class SunRise(OutboundEvent):
     player_ids: list[int]
     logs: list[dict[str, Any]]
     required_actions: list[dict[str, Any]] = []
+    round_requirements: list[dict[str, Any]] = []
 
 
 class GameStarted(OutboundEvent):
@@ -110,7 +113,9 @@ class GameStarted(OutboundEvent):
     session_id: str
     host: int
     alive_ids: list[int]
+    players: list[dict[str, Any]] = []
     required_actions: list[dict[str, Any]] = []
+    round_requirements: list[dict[str, Any]] = []
 
 
 class RoleAssigned(OutboundEvent):
@@ -134,6 +139,7 @@ class VoteResultStarted(OutboundEvent):
     lynch_target_id: int
     logs: list[dict[str, Any]]
     required_actions: list[dict[str, Any]] = []
+    round_requirements: list[dict[str, Any]] = []
 
 
 class GameState(OutboundEvent):
@@ -152,6 +158,19 @@ class GameState(OutboundEvent):
     role_description: str | None = None
     mafia_ids: list[int] | None = None
     required_actions: list[dict[str, Any]] = []
+    round_requirements: list[dict[str, Any]] = []
+
+
+class ActionSignal(OutboundEvent):
+    """Per-recipient tile signal for an action (audience decided server-side).
+
+    actor_id is only populated for actions whose audience may know who
+    acted (e.g. votes); hidden for secret actions (kill, heal, ...).
+    """
+    channel_type: ClassVar[str] = GameEvents.ACTION_SIGNAL
+    action_type: str
+    target_id: int
+    actor_id: int | None = None
 
 
 class NightAction(OutboundEvent):
@@ -167,7 +186,9 @@ class GameReset(OutboundEvent):
     session_id: str
     host: int
     alive_ids: list[int]
+    players: list[dict[str, Any]] = []
     required_actions: list[dict[str, Any]] = []
+    round_requirements: list[dict[str, Any]] = []
 
 
 class GameCanceled(OutboundEvent):

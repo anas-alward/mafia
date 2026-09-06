@@ -217,5 +217,8 @@ MAILJET_SENDER_EMAIL = os.environ.get('MAILJET_SENDER_EMAIL', 'noreply@mafia.gam
 ## LiveKit (WebRTC media server)
 # LIVEKIT_URL is the browser-facing signaling URL, not the backend's.
 LIVEKIT_URL = os.environ.get('LIVEKIT_URL', 'ws://localhost:7880')
+# Server-side RoomService API (used for voice enforcement); resolves
+# inside the compose network.
+LIVEKIT_SERVER_URL = os.environ.get('LIVEKIT_SERVER_URL', 'http://livekit:7880')
 LIVEKIT_API_KEY = os.environ.get('LIVEKIT_API_KEY', 'devkey')
 LIVEKIT_API_SECRET = os.environ.get('LIVEKIT_API_SECRET', 'devsecret')

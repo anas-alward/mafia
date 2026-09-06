@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from apps.core.livekit import livekit_client
+from apps.game.engine.session import GameSession
 from apps.room.session import RoomMember
 
 from ..dispatch import on, trampoline
@@ -179,15 +180,22 @@ async def join_request_accepted(consumer: RealtimeConsumer, event: dict) -> None
 
     consumer._is_member = True
 
-    member = RoomMember(user_id=consumer.user.id, name=consumer.user.get_full_name())
+    member = RoomMember(user_id=consumer.user.id, name=consumer.user.username)
     await consumer.session.add_member(member)
 
     await consumer.groups.join(RoomActive(room_code=consumer.code))
 
+    # Silenced players rejoining mid-game get a camera-only publish grant.
+    game_session = await GameSession.load(room_id=consumer.code)
+    silenced = (
+        game_session is not None
+        and consumer.user.id in game_session.silenced_player_ids
+    )
     credentials = livekit_client.add_participant(
         meeting_id=consumer.session.meeting_id,
         participant_id=str(consumer.user.id),
         name=consumer.user.username,
+        can_publish_sources=['CAMERA'] if silenced else None,
     )
     member_ids = await consumer.session.get_member_ids()
 

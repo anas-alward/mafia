@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 
 from ..error_codes import ErrorCode
 from .base import OutboundEvent

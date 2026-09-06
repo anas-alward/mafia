@@ -90,6 +90,54 @@ class GameRound:
         """All actions recorded in this round (for reconnection / logs display)."""
         return self._get_actions_list()
 
+    async def voter_ids_for(self, target_id: int) -> list[int]:
+        """IDs of players whose CURRENT vote targets *target_id*.
+
+        Respects revotes: only each actor's last vote in this round counts.
+        Reads both the in-memory action list and any pending Redis actions
+        (votes live in the pending list until the round resolves).
+        """
+        actions: list[Action] = list(self._get_actions_list())
+        if self._session is not None:
+            pending_raw = await redis_client.lrange(
+                self._session.pending_actions_key, 0, -1
+            )
+            for raw in pending_raw:
+                actions.append(Action.from_dict(json.loads(raw)))
+
+        latest: dict[int, Action] = {}
+        for a in actions:
+            if a.action_type == ActionType.VOTE and a.target_id is not None:
+                latest[a.actor_id] = a
+        return [a.actor_id for a in latest.values() if a.target_id == target_id]
+
+    async def requirement_summary(self) -> list[dict]:
+        """Anonymous per-action-type completion status for this phase.
+
+        Returns [{'action_type': <str>, 'done': <bool>}] — no player
+        identities. Clients show what is done/pending without learning
+        who must act.
+        """
+        actions: list[Action] = list(self._get_actions_list())
+        if self._session is not None:
+            pending_raw = await redis_client.lrange(
+                self._session.pending_actions_key, 0, -1
+            )
+            for raw in pending_raw:
+                actions.append(Action.from_dict(json.loads(raw)))
+        submitted = {(a.actor_id, a.action_type) for a in actions}
+
+        summary: list[dict] = []
+        for at in ActionType:
+            obligated = [
+                pid for pid, types in self.obligations.items() if at in types
+            ]
+            if not obligated:
+                continue
+            done = all((pid, at) in submitted for pid in obligated)
+            summary.append({'action_type': at.value, 'done': done})
+        return summary
+
     # ------------------------------------------------------------------
     # Grace timer
     # ------------------------------------------------------------------
@@ -308,11 +356,9 @@ class NightRound(GameRound):
                         'role_name': target.role.name if target and target.role else None,
                     })
 
-        # 4. DETECT
-        for a in actions:
-            if a.action_type == ActionType.DETECT:
-                logs.append({'target_id': a.target_id, 'action_type': a.action_type.value})
-
+        # 4. DETECT — never logged. The detective receives their result
+        # privately via detect_result; broadcasting it would reveal the
+        # investigation to everyone.
         await self._autosave()
         return logs
 

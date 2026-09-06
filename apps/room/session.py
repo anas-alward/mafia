@@ -341,7 +341,7 @@ class RoomSession:
 
         data = {
             'user_id': str(user.pk),
-            'name': user.get_full_name(),
+            'name': user.username,
             'requested_at': datetime.utcnow().isoformat(),
         }
 

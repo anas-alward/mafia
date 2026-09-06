@@ -22,13 +22,16 @@ How inbound dispatch works:
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.core.exceptions import PermissionDenied
 
 from apps.core.livekit import livekit_client
-from apps.game.engine.constants import PlayerStatus
+from apps.core.redis import redis_client
+from apps.game.engine.action import Action
+from apps.game.engine.constants import ActionType, PlayerStatus
 from apps.game.engine.roles.type import RoleType
 from apps.game.engine.session import GameSession
 from apps.room.session import MemberStatus, RoomMember, RoomSession
@@ -47,8 +50,9 @@ from .events import (
     PlayerLeft,
     RoomState,
 )
-from .groups import GameSessionGroup, GameSessionRole, RoomActive, RoomPending
+from .groups import GameSessionGroup, GameSessionRole, RoomActive, RoomPending, UserGroup
 from .membership import GroupMembership
+from .players import build_public_players
 
 
 class RealtimeConsumer(EventDispatchMixin, AsyncJsonWebsocketConsumer):
@@ -67,6 +71,8 @@ class RealtimeConsumer(EventDispatchMixin, AsyncJsonWebsocketConsumer):
             channel_layer=self.channel_layer,
             channel_name=self.channel_name,
         )
+        # Personal channel — targeted, per-recipient events (action signals).
+        await self.groups.join(UserGroup(self.user.id))
         self.pending_scope = RoomPending(room_code=code)
         self.active_scope = RoomActive(room_code=code)
 
@@ -134,10 +140,17 @@ class RealtimeConsumer(EventDispatchMixin, AsyncJsonWebsocketConsumer):
 
         member = await self.session.get_member(self.user.id)
         if member is None:
-            member = RoomMember(user_id=self.user.id, name=self.user.get_full_name())
+            member = RoomMember(user_id=self.user.id, name=self.user.username)
             await self.session.add_member(member)
-        elif member.status == MemberStatus.DISCONNECTED:
-            await self.session.reconnect_member(self.user.id)
+        else:
+            if member.status == MemberStatus.DISCONNECTED:
+                await self.session.reconnect_member(self.user.id)
+            # Heal stale members stored with an empty name so game events
+            # (vote overlays, logs) carry real usernames.
+            if not member.name:
+                await self.session.update_member(
+                    self.user.id, name=self.user.username
+                )
 
         await self.groups.join(self.active_scope)
 
@@ -164,28 +177,27 @@ class RealtimeConsumer(EventDispatchMixin, AsyncJsonWebsocketConsumer):
 
         await self.accept()
 
+        # Load the game session first: silenced players must reconnect with
+        # a camera-only publish grant (voice blocked server-side).
+        game_session = await GameSession.load(room_id=self.code)
+        silenced = (
+            game_session is not None
+            and self.user.id in game_session.silenced_player_ids
+        )
         credentials = livekit_client.add_participant(
             meeting_id=self.session.meeting_id,
             participant_id=str(self.user.id),
             name=self.user.username,
+            can_publish_sources=['CAMERA'] if silenced else None,
         )
         member_ids = await self.session.get_member_ids()
 
         # Build game state payload if a game is in progress.
         game_state_payload: dict[str, Any] | None = None
-        game_session = await GameSession.load(room_id=self.code)
         if game_session is not None:
             current_round = game_session.current_round()
 
-            players_public = []
-            for p in game_session.players:
-                entry = {'id': p.id, 'code': p.code, 'status': p.status.value}
-                if p.status == PlayerStatus.DEAD and p.role is not None:
-                    # Role reveal persists in game state so reconnecting
-                    # clients keep dead players' roles.
-                    entry['role_code'] = p.role.code
-                    entry['role_name'] = p.role.name
-                players_public.append(entry)
+            players_public = await build_public_players(self.session, game_session)
             live_ids = [p.id for p in game_session.players if p.status == PlayerStatus.ALIVE]
             dead_ids = [p.id for p in game_session.players if p.status == PlayerStatus.DEAD]
 
@@ -215,7 +227,21 @@ class RealtimeConsumer(EventDispatchMixin, AsyncJsonWebsocketConsumer):
                     )
 
             required_actions = current_round.get_required_actions_for_player(self.user.id)
+            round_requirements = await current_round.requirement_summary()
             logs = [a.to_dict() for a in current_round.all_actions]
+
+            # Day votes live in the pending Redis list until the round
+            # resolves, so all_actions misses them. Include them here so a
+            # reconnecting client rebuilds the live vote tally — votes are
+            # public (every client already got the vote_cast broadcast), so
+            # this leaks nothing.
+            pending_raw = await redis_client.lrange(
+                game_session.pending_actions_key, 0, -1
+            )
+            for raw in pending_raw:
+                action = Action.from_dict(json.loads(raw))
+                if action.action_type == ActionType.VOTE:
+                    logs.append(action.to_dict())
 
             game_state_payload = GameState(
                 session_id=game_session.id,
@@ -232,6 +258,7 @@ class RealtimeConsumer(EventDispatchMixin, AsyncJsonWebsocketConsumer):
                 role_description=role_description,
                 mafia_ids=mafia_ids,
                 required_actions=required_actions,
+                round_requirements=round_requirements,
             ).model_dump()
 
         await self.send_event(
