@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "corsheaders",
     "channels",
+    "anymail",
     "apps.accounts",
     "apps.room",
     "apps.game",
@@ -204,15 +205,25 @@ AUTHENTICATION_BACKENDS = [
     'apps.accounts.services.account.EmailAuthBackend',
 ]
 
-# Email verification
-EMAIL_VERIFICATION_ENABLED = False # os.environ.get('EMAIL_VERIFICATION_ENABLED', 'False').lower() in ('true', '1', 'yes')
+# Email verification — when ON, register() generates an OTP code and emails it.
+EMAIL_VERIFICATION_ENABLED = os.environ.get('EMAIL_VERIFICATION_ENABLED', 'True').lower() in (
+    'true',
+    '1',
+    'yes',
+)
 EMAIL_VERIFICATION_TIMEOUT = timedelta(minutes=int(os.environ.get('EMAIL_VERIFICATION_TIMEOUT_MINUTES', '10')))
 PASSWORD_RESET_TIMEOUT = timedelta(hours=1)
 
-# Mailjet
-MAILJET_API_KEY = os.environ.get('MAILJET_API_KEY', '')
-MAILJET_API_SECRET = os.environ.get('MAILJET_API_SECRET', '')
-MAILJET_SENDER_EMAIL = os.environ.get('MAILJET_SENDER_EMAIL', 'noreply@mafia.game')
+# Email (Django-Anymail + Resend)
+# https://anymail.dev/en/stable/esps/resend/
+EMAIL_BACKEND = os.environ.get(
+    'DJANGO_EMAIL_BACKEND', 'anymail.backends.resend.EmailBackend'
+)
+ANYMAIL = {
+    'RESEND_API_KEY': os.environ.get('RESEND_API_KEY', ''),
+}
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@mafia.game')
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
 
 ## LiveKit (WebRTC media server)
 # LIVEKIT_URL is the browser-facing signaling URL, not the backend's.

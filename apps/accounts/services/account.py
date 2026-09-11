@@ -23,7 +23,7 @@ else:
 
 
 class EmailAuthBackend(ModelBackend):
-    """Authenticate by email (used as username) for verified users only."""
+    """Authenticate by email. Blocks unverified users when verification is enabled."""
 
     def authenticate(
         self,
@@ -35,13 +35,14 @@ class EmailAuthBackend(ModelBackend):
         if username is None or password is None:
             return None
         try:
-            print("email verification: ", settings.EMAIL_VERIFICATION_ENABLED)
-            user = User.objects.get(email__iexact=username.lower(), is_verified=settings.EMAIL_VERIFICATION_ENABLED)
+            user = User.objects.get(email__iexact=username.lower())
         except User.DoesNotExist:
             return None
-        if user.check_password(password):
-            return user
-        return None
+        if not user.check_password(password):
+            return None
+        if settings.EMAIL_VERIFICATION_ENABLED and not user.is_verified:
+            return None
+        return user
 
 
 class AccountService:
