@@ -50,5 +50,21 @@ services:
     env_file:
       - .env
 
+  worker:
+    build: .
+    command:
+      - bash
+      - -c
+      - uv run celery -A config worker --loglevel=info
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    env_file:
+      - .env
+
 volumes:
   postgres_data:
