@@ -50,7 +50,7 @@ class EmailServiceTests(SimpleTestCase):
         assert len(mail.outbox) == 1
         msg = mail.outbox[0]
         assert msg.subject == 'Reset your password'
-        expected_link = 'https://mf.alward.dev/password/reset?token=abcd-token'
+        expected_link = 'https://mf.alward.dev/password/reset?token=abcd-token&email=test%40example.com'
         assert expected_link in msg.body
         assert msg.alternatives
         assert expected_link in msg.alternatives[0][0]

@@ -42,9 +42,10 @@ class EmailService:
         """Send a password reset email with a link carrying the reset token."""
         if not self._enabled:
             return
-        from urllib.parse import quote
+        from urllib.parse import urlencode
 
-        reset_link = f'{settings.FRONTEND_URL}/password/reset?token={quote(reset_token)}'
+        query = urlencode({'token': reset_token, 'email': to_email})
+        reset_link = f'{settings.FRONTEND_URL}/password/reset?{query}'
         send_mail(
             subject='Reset your password',
             message=(
