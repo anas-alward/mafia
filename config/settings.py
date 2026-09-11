@@ -225,6 +225,9 @@ ANYMAIL = {
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@mafia.game')
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
 
+# Public frontend base URL — used to build links in emails (e.g. password reset).
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173').rstrip('/')
+
 ## LiveKit (WebRTC media server)
 # LIVEKIT_URL is the browser-facing signaling URL, not the backend's.
 LIVEKIT_URL = os.environ.get('LIVEKIT_URL', 'ws://localhost:7880')

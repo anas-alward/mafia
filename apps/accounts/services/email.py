@@ -39,23 +39,24 @@ class EmailService:
         )
 
     def send_password_reset_email(self, to_email: str, reset_token: str) -> None:
-        """Send a password reset email with a reset token."""
+        """Send a password reset email with a link carrying the reset token."""
         if not self._enabled:
             return
+        reset_link = f'{settings.FRONTEND_URL}/password/reset/{reset_token}/'
         send_mail(
             subject='Reset your password',
             message=(
                 f'We received a request to reset your password.\n\n'
-                f'Your password reset token is: {reset_token}\n'
-                f'This token expires in 1 hour.\n'
+                f'Reset your password here: {reset_link}\n'
+                f'This link expires in 1 hour.\n'
                 f'If you did not request this, please ignore this email.'
             ),
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[to_email],
             html_message=(
                 f'<p>We received a request to reset your password.</p>'
-                f'<p>Your password reset token is: <strong>{reset_token}</strong></p>'
-                f'<p>This token expires in 1 hour.</p>'
+                f'<p><a href="{reset_link}">Reset your password</a></p>'
+                f'<p>This link expires in 1 hour.</p>'
                 f'<p>If you did not request this, please ignore this email.</p>'
             ),
         )

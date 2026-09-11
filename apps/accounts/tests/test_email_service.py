@@ -41,18 +41,19 @@ class EmailServiceTests(SimpleTestCase):
 
         assert len(mail.outbox) == 0
 
-    @override_settings(EMAIL_VERIFICATION_ENABLED=True)
+    @override_settings(EMAIL_VERIFICATION_ENABLED=True, FRONTEND_URL='https://mf.alward.dev')
     def test_send_password_reset_email_dispatches(self) -> None:
-        """send_password_reset_email queues one message with reset token."""
+        """send_password_reset_email queues one message with a reset link."""
         service = EmailService()
         service.send_password_reset_email(to_email='test@example.com', reset_token='abcd-token')
 
         assert len(mail.outbox) == 1
         msg = mail.outbox[0]
         assert msg.subject == 'Reset your password'
-        assert 'abcd-token' in msg.body
+        expected_link = 'https://mf.alward.dev/password/reset/abcd-token/'
+        assert expected_link in msg.body
         assert msg.alternatives
-        assert 'abcd-token' in msg.alternatives[0][0]
+        assert expected_link in msg.alternatives[0][0]
 
     @override_settings(EMAIL_VERIFICATION_ENABLED=False)
     def test_send_password_reset_email_skips_when_flag_off(self) -> None:
