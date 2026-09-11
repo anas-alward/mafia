@@ -19,6 +19,7 @@ class EmailService:
     def send_verification_email(self, to_email: str, code: str) -> None:
         """Send a verification email with a 6-digit code."""
         if not self._enabled:
+            print("NOT enabled++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
             return
         minutes = settings.EMAIL_VERIFICATION_TIMEOUT.seconds // 60
         send_mail(
