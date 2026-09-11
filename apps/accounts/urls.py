@@ -30,12 +30,12 @@ urlpatterns = [
     path('logout/', LogoutView.as_view(), name='logout'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
     path(
-        'password-reset-request/',
+        'password/reset/request/',
         PasswordResetRequestView.as_view(),
         name='password-reset-request',
     ),
     path(
-        'password-reset-confirm/',
+        'password/reset/confirm/',
         PasswordResetConfirmView.as_view(),
         name='password-reset-confirm',
     ),
