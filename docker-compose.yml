@@ -3,12 +3,12 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: gcByt4ESfz4id7jqkb9wSky2Uv+Whtdx
       POSTGRES_DB: mafia
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    # ports:  # DO NOT expose PostgreSQL to the host — use internal Docker network only
+    #   - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -17,8 +17,8 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    # ports:
+    #   - "6379:6379"
 
   livekit:
     image: livekit/livekit-server:latest
@@ -28,7 +28,10 @@ services:
     volumes:
       - ./livekit.yaml:/etc/livekit.yaml:ro
     ports:
-      - "7880:7880"
+      # Signaling goes through nginx (wss://mafia.alward.dev/livekit) — keep
+      # the raw port on localhost only. 7881/tcp (ICE-TCP) and 7882/udp
+      # (media) must stay publicly reachable for WebRTC.
+      - "127.0.0.1:7880:7880"
       - "7881:7881"
       - "7882:7882/udp"
 
@@ -41,7 +44,7 @@ services:
     volumes:
       - .:/app
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       db:
         condition: service_healthy
