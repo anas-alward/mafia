@@ -7,17 +7,20 @@ from .type import (
     TownBomb,
     TownCop,
     TownDoctor,
+    TownMayor,
     TownVanilla,
     TownVigilante,
 )
+
+
 class UndefinedPlayerCountError(Exception):
     """Raised when no role composition has been defined for a given player count."""
 
     def __init__(self, count: int):
         self.count = count
         super().__init__(
-            f"No role composition defined for {count} players. "
-            f"Defined counts: {sorted(ROLE_COMPOSITIONS.keys())}"
+            f'No role composition defined for {count} players. '
+            f'Defined counts: {sorted(ROLE_COMPOSITIONS.keys())}'
         )
 
 
@@ -33,7 +36,7 @@ ROLE_COMPOSITIONS: dict[int, list[type]] = {
         TownDoctor,
         TownVanilla,
         TownVanilla,
-        TownVanilla,
+        TownMayor,
         MafiaMember,
         MafiaMember,
     ],
@@ -52,7 +55,7 @@ ROLE_COMPOSITIONS: dict[int, list[type]] = {
         TownVanilla,
         TownVanilla,
         TownVanilla,
-        TownVanilla,
+        TownMayor,
         MafiaGodfather,
         MafiaSilencer,
     ],
@@ -87,7 +90,7 @@ ROLE_COMPOSITIONS: dict[int, list[type]] = {
         TownVanilla,
         TownVanilla,
         TownVanilla,
-        TownVanilla,
+        TownMayor,
         MafiaGodfather,
         MafiaSilencer,
         MafiaMember,
@@ -121,7 +124,4 @@ class RoleDistributor:
         roles = composition.copy()
         random.shuffle(roles)
 
-        return [
-            Player(id=player_id, role=role)
-            for player_id, role in zip(player_ids, roles)
-        ]
+        return [Player(id=player_id, role=role) for player_id, role in zip(player_ids, roles)]
