@@ -180,13 +180,12 @@ CHANNEL_LAYERS = {
     },
 }
 
-# CORS — allow frontend origins
+# CORS — allow frontend origins (frontend lives at https://mafia.alward.dev)
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:4173",
     "http://localhost:3000",
     "https://mafia.alward.dev",
-    "https://mf.alward.dev"
 ]
 CORS_ALLOW_CREDENTIALS = True
 
