@@ -111,9 +111,15 @@ async def handle_vote(consumer: RealtimeConsumer, event: Vote, *, game_session: 
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.VOTE)
     )
+    voter = next((p for p in game_session.players if p.id == consumer.user.id), None)
+    role = voter.role if voter is not None else None
     await consumer.groups.emit(
         GameSessionGroup(room_code=consumer.code, session_id=game_session.id),
-        VoteCast(actor_id=consumer.user.id, target_id=event.target_id),
+        VoteCast(
+            actor_id=consumer.user.id,
+            target_id=event.target_id,
+            weight=getattr(role, 'vote_weight', 1),
+        ),
     )
     await emit_action_signal(
         consumer, game_session, ActionType.VOTE, consumer.user.id, event.target_id
@@ -494,7 +500,11 @@ async def action_signal(consumer: RealtimeConsumer, event: dict) -> None:
 @trampoline(GameEvents.VOTE_CAST)
 async def vote_cast(consumer: RealtimeConsumer, event: dict) -> None:
     await consumer.send_json(
-        VoteCast(actor_id=event['actor_id'], target_id=event['target_id']).to_json()
+        VoteCast(
+            actor_id=event['actor_id'],
+            target_id=event['target_id'],
+            weight=event.get('weight', 1),
+        ).to_json()
     )
 
 

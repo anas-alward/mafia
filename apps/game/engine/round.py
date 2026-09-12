@@ -485,8 +485,11 @@ class DayRound(GameRound):
                 logs.append({'actor_id': a.actor_id, 'target_id': a.target_id, 'action_type': a.action_type.value})
 
         tally: dict[int, int] = {}
-        for target_id in actor_votes.values():
-            tally[target_id] = tally.get(target_id, 0) + 1
+        for actor_id, target_id in actor_votes.items():
+            actor = self._get_player(actor_id)
+            role = actor.role if actor is not None else None
+            weight = getattr(role, 'vote_weight', 1)
+            tally[target_id] = tally.get(target_id, 0) + weight
 
         if tally:
             lynch = max(tally, key=tally.get)

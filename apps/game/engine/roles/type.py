@@ -14,6 +14,8 @@ class BaseRole:
     name: str
     description: str
     actions: dict[Phase, list[ActionConfig]] = {}
+    # Voting power in day votes. Everyone has 1 except the Mayor (3).
+    vote_weight: int = 1
 
 
 class TownDoctor(BaseRole):
@@ -86,6 +88,19 @@ class TownVanilla(BaseRole):
     }
 
 
+class TownMayor(BaseRole):
+    code = "mayor"
+    role_type = RoleType.TOWN
+    name = "Mayor"
+    description = "Elected town leader whose day vote counts as 3 votes."
+    vote_weight = 3
+    actions = {
+        Phase.DAY: [
+            ActionConfig(action_type=ActionType.VOTE, required=True),
+        ],
+    }
+
+
 class MafiaGodfather(BaseRole):
     code = "godfather"
     role_type = RoleType.MAFIA
@@ -144,6 +159,7 @@ ROLES: list[BaseRole] = [
     TownVigilante(),
     TownBomb(),
     TownVanilla(),
+    TownMayor(),
     MafiaGodfather(),
     MafiaSilencer(),
     MafiaMember(),

@@ -132,6 +132,7 @@ class VoteCast(OutboundEvent):
     channel_type: ClassVar[str] = GameEvents.VOTE_CAST
     actor_id: int
     target_id: int
+    weight: int = 1
 
 
 class VoteResultStarted(OutboundEvent):
