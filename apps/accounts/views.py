@@ -30,6 +30,7 @@ class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
     permission_classes = [permissions.AllowAny]
+    throttle_scope = 'register'
 
     def create(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         serializer = self.get_serializer(data=request.data)
@@ -55,6 +56,7 @@ class RegisterView(generics.CreateAPIView):
 class VerifyEmailView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
     serializer_class = VerifyEmailSerializer
+    throttle_scope = 'verify'
 
     def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         serializer = self.get_serializer(data=request.data)
@@ -78,6 +80,7 @@ class VerifyEmailView(generics.GenericAPIView):
 class ResendVerificationView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
     serializer_class = ResendVerificationSerializer
+    throttle_scope = 'resend-verification'
 
     def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         serializer = self.get_serializer(data=request.data)
@@ -98,6 +101,7 @@ class ResendVerificationView(generics.GenericAPIView):
 class LoginView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
     serializer_class = LoginSerializer
+    throttle_scope = 'login'
 
     def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         serializer = self.get_serializer(data=request.data)
@@ -125,6 +129,7 @@ class LoginView(generics.GenericAPIView):
 class PasswordResetRequestView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
     serializer_class = PasswordResetRequestSerializer
+    throttle_scope = 'password-reset-request'
 
     def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         serializer = self.get_serializer(data=request.data)
@@ -145,6 +150,7 @@ class PasswordResetRequestView(generics.GenericAPIView):
 class PasswordResetConfirmView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
     serializer_class = PasswordResetConfirmSerializer
+    throttle_scope = 'password-reset-confirm'
 
     def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         serializer = self.get_serializer(data=request.data)
@@ -212,7 +218,7 @@ class LogoutView(generics.GenericAPIView):
 
 
 class TokenRefreshView(SimpleJWTTokenRefreshView):
-    pass
+    throttle_scope = 'token-refresh'
 
 
 class MeView(generics.RetrieveAPIView):
