@@ -77,7 +77,7 @@ ROLE_COMPOSITIONS: dict[int, list[type]] = {
         TownBomb,
         TownVanilla,
         TownVanilla,
-        TownVanilla,
+        TownMayor,
         MafiaGodfather,
         MafiaSilencer,
         MafiaMember,
