@@ -29,6 +29,7 @@ from apps.game.engine.round import GRACE_SECONDS
 from apps.game.engine.session import GameSession
 from apps.realtime.players import build_public_players
 from apps.realtime.signals import emit_action_signal
+from apps.room.helpers import meeting_id_for
 
 from ..dispatch import on, trampoline
 from ..error_codes import ErrorCode
@@ -732,7 +733,7 @@ async def _apply_voice_state(
     permission restricted to the camera; restored players may unmute
     themselves again.
     """
-    meeting_id = livekit_client.create_meeting(game_session.room_id)
+    meeting_id = meeting_id_for(game_session.room_id)
     for pid in restore_ids:
         await livekit_client.set_voice_allowed(meeting_id, str(pid), allowed=True)
     for pid in silence_ids:

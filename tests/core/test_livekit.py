@@ -11,12 +11,6 @@ pytestmark = pytest.mark.django_db
 
 
 class TestLiveKitClient:
-    def test_create_meeting_returns_deterministic_room_name(self) -> None:
-        client = LiveKitClient()
-
-        assert client.create_meeting('abc123') == 'mafia-room-abc123'
-        assert client.create_meeting('abc123') == 'mafia-room-abc123'
-
     def test_add_participant_returns_credentials(self) -> None:
         client = LiveKitClient()
 

@@ -5,8 +5,7 @@ from __future__ import annotations
 from django.contrib.auth import get_user_model
 from django.db import models
 
-from apps.core.livekit import livekit_client
-
+from .helpers import meeting_id_for
 from .models import Room
 
 User = get_user_model()
@@ -22,7 +21,7 @@ class RoomService:
             host=host,
             name=name,
         )
-        meeting_id = livekit_client.create_meeting(room.code)
+        meeting_id = meeting_id_for(room.code)
         room.meeting_id = meeting_id
         room.save(update_fields=['meeting_id'])
         return room
@@ -44,4 +43,3 @@ class RoomService:
         room.status = Room.Status.FINISHED
         room.save(update_fields=['status'])
         return room
-

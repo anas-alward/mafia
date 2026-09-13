@@ -3,7 +3,7 @@
 The backend never talks to the LiveKit media server over the network:
 rooms are created implicitly on first participant join, and access is
 granted by minting JWT access tokens locally. The public surface is
-kept in meeting terms (create_meeting / add_participant) so callers
+kept in meeting terms (meeting ids plus add_participant) so callers
 stay independent of the media-server implementation.
 """
 
@@ -23,14 +23,6 @@ class LiveKitClient:
     """Mints LiveKit room names and participant access tokens."""
 
     TOKEN_TTL = timedelta(hours=6)
-
-    def create_meeting(self, code: str) -> str:
-        """Return the LiveKit room name for a room code.
-
-        LiveKit creates the room automatically when the first
-        participant connects, so no server-side call is needed.
-        """
-        return f'mafia-room-{code}'
 
     def add_participant(
         self,
