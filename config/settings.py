@@ -255,3 +255,4 @@ LIVEKIT_URL = os.environ.get('LIVEKIT_URL', 'ws://localhost:7880')
 # inside the compose network.
 LIVEKIT_SERVER_URL = os.environ.get('LIVEKIT_SERVER_URL', 'http://livekit:7880')
 LIVEKIT_API_KEY = os.environ.get('LIVEKIT_API_KEY', 'devkey')
+LIVEKIT_API_SECRET = os.environ.get('LIVEKIT_API_SECRET', 'devsecret')
