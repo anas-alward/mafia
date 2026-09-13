@@ -97,11 +97,7 @@ class LiveKitClient:
                 can_subscribe=True,
                 can_publish=True,
                 can_publish_data=True,
-                **(
-                    {'can_publish_sources': [models.TrackSource.CAMERA]}
-                    if not allowed
-                    else {}
-                ),
+                **({'can_publish_sources': [models.TrackSource.CAMERA]} if not allowed else {}),
             )
             await lk.room.update_participant(
                 api.UpdateParticipantRequest(
@@ -121,17 +117,12 @@ class LiveKitClient:
             await lk.aclose()
 
     async def _mute_microphone(self, lk: api.LiveKitAPI, room: str, identity: str) -> None:
-        participants = await lk.room.list_participants(
-            api.ListParticipantsRequest(room=room)
-        )
+        participants = await lk.room.list_participants(api.ListParticipantsRequest(room=room))
         for p in participants.participants:
             if p.identity != identity:
                 continue
             for track in p.tracks:
-                if (
-                    track.source == models.TrackSource.MICROPHONE
-                    and not track.muted
-                ):
+                if track.source == models.TrackSource.MICROPHONE and not track.muted:
                     await lk.room.mute_published_track(
                         api.MuteRoomTrackRequest(
                             room=room,

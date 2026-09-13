@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 from apps.core.livekit import livekit_client
 from apps.core.utils.uuid import generate_code
 from apps.game.engine.action import Action
-from apps.game.engine.constants import ActionType, Phase, PlayerStatus, VIGILANTE_AMMO
+from apps.game.engine.constants import VIGILANTE_AMMO, ActionType, Phase, PlayerStatus
 from apps.game.engine.roles.type import (
     MafiaGodfather,
     MafiaMember,
@@ -76,7 +76,9 @@ async def handle_start_game(consumer: RealtimeConsumer, event: StartGame) -> Non
     session = consumer.session
     player_ids = event.player_ids
     if len(player_ids) < 6:
-        await consumer.send_error(ErrorCode.INVALID_PAYLOAD, 'At least 6 players are required to start a game')
+        await consumer.send_error(
+            ErrorCode.INVALID_PAYLOAD, 'At least 6 players are required to start a game'
+        )
         return
     for pid in player_ids:
         if not await session.is_member(pid):
@@ -84,7 +86,9 @@ async def handle_start_game(consumer: RealtimeConsumer, event: StartGame) -> Non
 
     game_id = generate_code(length=16)
     game_session = await GameSession.start_new(
-        id=game_id, room_id=consumer.code, player_ids=player_ids,
+        id=game_id,
+        room_id=consumer.code,
+        player_ids=player_ids,
     )
     await game_session.new_round(phase=Phase.DAY)
     await session.set_game_session_id(game_id)
@@ -104,10 +108,12 @@ async def handle_start_game(consumer: RealtimeConsumer, event: StartGame) -> Non
 
 
 @on(Vote)
-@game_session(on_none="error")
+@game_session(on_none='error')
 @is_alive
 @require_phase(Phase.DAY)
-async def handle_vote(consumer: RealtimeConsumer, event: Vote, *, game_session: GameSession) -> None:
+async def handle_vote(
+    consumer: RealtimeConsumer, event: Vote, *, game_session: GameSession
+) -> None:
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.VOTE)
     )
@@ -144,11 +150,13 @@ async def emit_action_done(
 
 
 @on(Kill)
-@game_session(on_none="error")
+@game_session(on_none='error')
 @require_phase(Phase.NIGHT)
 @is_alive
 @require_role(MafiaGodfather, MafiaSilencer, MafiaMember)
-async def handle_kill(consumer: RealtimeConsumer, event: Kill, *, game_session: GameSession) -> None:
+async def handle_kill(
+    consumer: RealtimeConsumer, event: Kill, *, game_session: GameSession
+) -> None:
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.KILL)
     )
@@ -172,9 +180,11 @@ async def handle_kill(consumer: RealtimeConsumer, event: Kill, *, game_session: 
 
 
 @on(Revenge)
-@game_session(on_none="error")
+@game_session(on_none='error')
 @require_phase(Phase.VOTE_RESULT)
-async def handle_revenge(consumer: RealtimeConsumer, event: Revenge, *, game_session: GameSession) -> None:
+async def handle_revenge(
+    consumer: RealtimeConsumer, event: Revenge, *, game_session: GameSession
+) -> None:
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.REVENGE)
     )
@@ -186,11 +196,13 @@ async def handle_revenge(consumer: RealtimeConsumer, event: Revenge, *, game_ses
 
 
 @on(Heal)
-@game_session(on_none="error")
+@game_session(on_none='error')
 @require_phase(Phase.NIGHT)
 @require_role(TownDoctor)
 @is_alive
-async def handle_heal(consumer: RealtimeConsumer, event: Heal, *, game_session: GameSession) -> None:
+async def handle_heal(
+    consumer: RealtimeConsumer, event: Heal, *, game_session: GameSession
+) -> None:
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.HEAL)
     )
@@ -202,11 +214,13 @@ async def handle_heal(consumer: RealtimeConsumer, event: Heal, *, game_session: 
 
 
 @on(Shoot)
-@game_session(on_none="error")
+@game_session(on_none='error')
 @require_phase(Phase.DAY)
 @require_role(TownVigilante)
 @is_alive
-async def handle_shoot(consumer: RealtimeConsumer, event: Shoot, *, game_session: GameSession) -> None:
+async def handle_shoot(
+    consumer: RealtimeConsumer, event: Shoot, *, game_session: GameSession
+) -> None:
     round_ = game_session.current_round()
     if round_._shoot_uses(consumer.user.id) >= VIGILANTE_AMMO:
         await consumer.send_error(ErrorCode.INVALID_ACTION, 'No ammo left')
@@ -220,11 +234,13 @@ async def handle_shoot(consumer: RealtimeConsumer, event: Shoot, *, game_session
 
 
 @on(Detect)
-@game_session(on_none="error")
+@game_session(on_none='error')
 @require_phase(Phase.NIGHT)
 @require_role(TownCop)
 @is_alive
-async def handle_detect(consumer: RealtimeConsumer, event: Detect, *, game_session: GameSession) -> None:
+async def handle_detect(
+    consumer: RealtimeConsumer, event: Detect, *, game_session: GameSession
+) -> None:
     round_ = game_session.current_round()
     if await round_.has_submitted_action(consumer.user.id, ActionType.DETECT):
         await consumer.send_error(
@@ -254,11 +270,13 @@ async def handle_detect(consumer: RealtimeConsumer, event: Detect, *, game_sessi
 
 
 @on(Silence)
-@game_session(on_none="error")
+@game_session(on_none='error')
 @require_phase(Phase.NIGHT)
 @require_role(MafiaSilencer)
 @is_alive
-async def handle_silence(consumer: RealtimeConsumer, event: Silence, *, game_session: GameSession) -> None:
+async def handle_silence(
+    consumer: RealtimeConsumer, event: Silence, *, game_session: GameSession
+) -> None:
     await game_session.current_round().add_action(
         Action(actor_id=consumer.user.id, target_id=event.target_id, action_type=ActionType.SILENCE)
     )
@@ -282,10 +300,12 @@ async def handle_silence(consumer: RealtimeConsumer, event: Silence, *, game_ses
 
 
 @on(SubmitVotes)
-@game_session(on_none="error")
+@game_session(on_none='error')
 @is_host
 @require_phase(Phase.DAY)
-async def handle_submit_votes(consumer: RealtimeConsumer, event: SubmitVotes, *, game_session: GameSession) -> None:
+async def handle_submit_votes(
+    consumer: RealtimeConsumer, event: SubmitVotes, *, game_session: GameSession
+) -> None:
     """Resolve the DAY voting round and transition to the next phase.
 
     DAY → resolve → if lynch target → VoteResultStarted → new round (vote_result)
@@ -309,7 +329,9 @@ async def handle_submit_votes(consumer: RealtimeConsumer, event: SubmitVotes, *,
 
     # DAY with a lynch target → transition to VOTE_RESULT phase.
     if round_.lynch_target_id is not None:
-        vote_result_round = await game_session.new_round(phase=Phase.VOTE_RESULT, lynch_target_id=round_.lynch_target_id)
+        vote_result_round = await game_session.new_round(
+            phase=Phase.VOTE_RESULT, lynch_target_id=round_.lynch_target_id
+        )
         await consumer.groups.emit(
             group,
             VoteResultStarted(lynch_target_id=round_.lynch_target_id, logs=logs),
@@ -325,8 +347,10 @@ async def handle_submit_votes(consumer: RealtimeConsumer, event: SubmitVotes, *,
 
 @on(ResetGame)
 @is_host
-@game_session(on_none="error")
-async def handle_reset_game(consumer: RealtimeConsumer, event: ResetGame, *, game_session: GameSession) -> None:
+@game_session(on_none='error')
+async def handle_reset_game(
+    consumer: RealtimeConsumer, event: ResetGame, *, game_session: GameSession
+) -> None:
     player_ids = [p.id for p in game_session.players]
     await _apply_voice_state(
         game_session,
@@ -337,7 +361,9 @@ async def handle_reset_game(consumer: RealtimeConsumer, event: ResetGame, *, gam
 
     game_id = generate_code(length=16)
     new_session = await GameSession.start_new(
-        id=game_id, room_id=consumer.code, player_ids=player_ids,
+        id=game_id,
+        room_id=consumer.code,
+        player_ids=player_ids,
     )
     await new_session.new_round(phase=Phase.DAY)
     await consumer.session.set_game_session_id(game_id)
@@ -358,8 +384,10 @@ async def handle_reset_game(consumer: RealtimeConsumer, event: ResetGame, *, gam
 
 @on(CancelGame)
 @is_host
-@game_session(on_none="error")
-async def handle_cancel_game(consumer: RealtimeConsumer, event: CancelGame, *, game_session: GameSession) -> None:
+@game_session(on_none='error')
+async def handle_cancel_game(
+    consumer: RealtimeConsumer, event: CancelGame, *, game_session: GameSession
+) -> None:
     await _apply_voice_state(
         game_session,
         restore_ids=game_session.silenced_player_ids,
@@ -379,7 +407,7 @@ async def handle_cancel_game(consumer: RealtimeConsumer, event: CancelGame, *, g
 
 
 @trampoline(GameEvents.GAME_STARTED)
-@game_session(on_none="continue")
+@game_session(on_none='continue')
 async def game_started(
     consumer: RealtimeConsumer, event: dict, *, game_session: GameSession | None
 ) -> None:
@@ -408,13 +436,15 @@ async def game_started(
     # SunRise so they enter the first day phase (voting).
     if game_session is not None and consumer.user.id in event['player_ids']:
         mafia_players = [
-            p for p in game_session.players
+            p
+            for p in game_session.players
             if p.role is not None and p.role.role_type == RoleType.MAFIA
         ]
         mafia_player_ids = [p.id for p in mafia_players]
         mafia_members = [
             {'id': p.id, 'role_code': p.role.code, 'role_name': p.role.name}
-            for p in mafia_players if p.role is not None
+            for p in mafia_players
+            if p.role is not None
         ]
         for player in game_session.players:
             if player.id == consumer.user.id and player.role is not None:
@@ -449,8 +479,10 @@ async def game_started(
 
 
 @trampoline(GameEvents.SUN_SET)
-@game_session(on_none="continue")
-async def sun_set(consumer: RealtimeConsumer, event: dict, *, game_session: GameSession | None) -> None:
+@game_session(on_none='continue')
+async def sun_set(
+    consumer: RealtimeConsumer, event: dict, *, game_session: GameSession | None
+) -> None:
     required_actions: list[dict[str, Any]] = []
     round_requirements: list[dict[str, Any]] = []
     if game_session is not None:
@@ -468,8 +500,10 @@ async def sun_set(consumer: RealtimeConsumer, event: dict, *, game_session: Game
 
 
 @trampoline(GameEvents.SUN_RISE)
-@game_session(on_none="continue")
-async def sun_rise(consumer: RealtimeConsumer, event: dict, *, game_session: GameSession | None) -> None:
+@game_session(on_none='continue')
+async def sun_rise(
+    consumer: RealtimeConsumer, event: dict, *, game_session: GameSession | None
+) -> None:
     required_actions: list[dict[str, Any]] = []
     round_requirements: list[dict[str, Any]] = []
     if game_session is not None:
@@ -520,7 +554,7 @@ async def night_action(consumer: RealtimeConsumer, event: dict) -> None:
 
 
 @trampoline(GameEvents.VOTE_RESULT_STARTED)
-@game_session(on_none="continue")
+@game_session(on_none='continue')
 async def vote_result_started(
     consumer: RealtimeConsumer, event: dict, *, game_session: GameSession | None
 ) -> None:
@@ -541,7 +575,7 @@ async def vote_result_started(
 
 
 @trampoline(GameEvents.GAME_RESET)
-@game_session(on_none="continue")
+@game_session(on_none='continue')
 async def game_reset(
     consumer: RealtimeConsumer, event: dict, *, game_session: GameSession | None
 ) -> None:
@@ -568,13 +602,15 @@ async def game_reset(
     )
     if game_session is not None and consumer.user.id in event['player_ids']:
         mafia_players = [
-            p for p in game_session.players
+            p
+            for p in game_session.players
             if p.role is not None and p.role.role_type == RoleType.MAFIA
         ]
         mafia_player_ids = [p.id for p in mafia_players]
         mafia_members = [
             {'id': p.id, 'role_code': p.role.code, 'role_name': p.role.name}
-            for p in mafia_players if p.role is not None
+            for p in mafia_players
+            if p.role is not None
         ]
         for player in game_session.players:
             if player.id == consumer.user.id and player.role is not None:
@@ -735,11 +771,7 @@ async def _transition_after_resolve(
     if round_.phase == Phase.NIGHT:
         # The silencer's targets take effect now: muted through the day and
         # vote-result phases, until the next night begins.
-        silenced = (
-            round_.silenced_target_ids()
-            if hasattr(round_, 'silenced_target_ids')
-            else []
-        )
+        silenced = round_.silenced_target_ids() if hasattr(round_, 'silenced_target_ids') else []
         game_session.silenced_player_ids = silenced
         await game_session.save()
         await game_session.new_round(phase=Phase.DAY)
@@ -756,4 +788,3 @@ async def _transition_after_resolve(
         alive_ids = [p.id for p in game_session.players if p.status == PlayerStatus.ALIVE]
         await consumer.groups.emit(group, SunSet(player_ids=alive_ids, logs=logs))
         await _apply_voice_state(game_session, restore_ids=expired, silence_ids=[])
-

@@ -23,6 +23,7 @@ How inbound dispatch works:
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
@@ -54,6 +55,8 @@ from .groups import GameSessionGroup, GameSessionRole, RoomActive, RoomPending, 
 from .membership import GroupMembership
 from .players import build_public_players
 
+logger = logging.getLogger(__name__)
+
 
 class RealtimeConsumer(EventDispatchMixin, AsyncJsonWebsocketConsumer):
     # -- lifecycle --------------------------------------------------------
@@ -78,7 +81,9 @@ class RealtimeConsumer(EventDispatchMixin, AsyncJsonWebsocketConsumer):
 
         session = await RoomSession.from_code(code)
         if not self.user or not session:
-            print("hello from here")
+            logger.warning(
+                'WS connect rejected — no active session for room %r', code
+            )
             await self.close(code=4001)
             return
 
@@ -98,20 +103,26 @@ class RealtimeConsumer(EventDispatchMixin, AsyncJsonWebsocketConsumer):
             )
 
     async def disconnect(self, close_code: int) -> None:
-        if await self.session.is_waiting(self.user.id):
-            await self.session.cancel_join_request(self.user.id)
+        # connect() can bail before a session is resolved (unauthenticated,
+        # unknown room) — nothing to clean up in that case.
+        session = getattr(self, 'session', None)
+        if session is None or not self.user:
+            return
+
+        if await session.is_waiting(self.user.id):
+            await session.cancel_join_request(self.user.id)
             await self.groups.emit(
                 self.pending_scope,
                 JoinRequestRejected(user_id=self.user.id, username=self.user.username),
             )
             return
 
-        was_host = await self.session.is_host(self.user)
-        await self.session.disconnect_member(self.user.id)
+        was_host = await session.is_host(self.user)
+        await session.disconnect_member(self.user.id)
         await self.groups.leave_all()
 
         if was_host:
-            live_members = await self.session.get_live_members()
+            live_members = await session.get_live_members()
             candidates = [m for m in live_members if m.user_id != self.user.id]
             if candidates:
                 new_host_id = candidates[0].user_id
