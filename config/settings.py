@@ -141,25 +141,6 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
-    # Rate limiting — every endpoint is covered by the anon/user ceilings;
-    # auth endpoints get stricter per-scope limits (brute-force / spam /
-    # email-bombing protection). Scopes are attached via throttle_scope.
-    "DEFAULT_THROTTLE_CLASSES": [
-        "rest_framework.throttling.AnonRateThrottle",
-        "rest_framework.throttling.UserRateThrottle",
-        "rest_framework.throttling.ScopedRateThrottle",
-    ],
-    "DEFAULT_THROTTLE_RATES": {
-        "anon": "120/min",
-        "user": "600/min",
-        "login": "10/min",
-        "register": "20/hour",
-        "verify": "30/hour",
-        "resend-verification": "5/hour",
-        "password-reset-request": "5/hour",
-        "password-reset-confirm": "20/hour",
-        "token-refresh": "60/hour",
-    },
 }
 
 # Simple JWT
@@ -199,12 +180,14 @@ CHANNEL_LAYERS = {
     },
 }
 
-# CORS — allow frontend origins (frontend lives at https://mafia.alward.dev)
+# CORS — allow frontend origins
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:4173",
     "http://localhost:3000",
-    "https://mafia.alward.dev",
+    "https://api-mafia.alward.dev",
+    "https://mf.alward.dev",
+    "https://mafia.alward.dev"
 ]
 CORS_ALLOW_CREDENTIALS = True
 
@@ -253,4 +236,3 @@ LIVEKIT_URL = os.environ.get('LIVEKIT_URL', 'ws://localhost:7880')
 # inside the compose network.
 LIVEKIT_SERVER_URL = os.environ.get('LIVEKIT_SERVER_URL', 'http://livekit:7880')
 LIVEKIT_API_KEY = os.environ.get('LIVEKIT_API_KEY', 'devkey')
-LIVEKIT_API_SECRET = os.environ.get('LIVEKIT_API_SECRET', 'devsecret')

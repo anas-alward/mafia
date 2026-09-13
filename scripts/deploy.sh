@@ -12,5 +12,3 @@ docker compose up -d --build
 
 echo "Running Django migrations..."
 docker compose exec -T app python manage.py migrate
-
-echo "Deployment complete."
