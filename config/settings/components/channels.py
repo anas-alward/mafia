@@ -10,7 +10,6 @@ CHANNEL_LAYERS = {
                 {
                     'host': env('REDIS_HOST'),
                     'port': env('REDIS_PORT'),
-                    'password': env('REDIS_PASSWORD') or None,
                     'db': 1,
                     'socket_timeout': None,
                     'socket_connect_timeout': 5,
