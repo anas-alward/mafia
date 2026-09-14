@@ -20,6 +20,7 @@ dependencies = [
     "watchfiles>=1.2.0",
     "websockets>=16.0",
     "pydantic>=2.13.4",
+    "django-environ>=0.14.0",
 ]
 
 [project.optional-dependencies]

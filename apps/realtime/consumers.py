@@ -60,6 +60,7 @@ logger = logging.getLogger(__name__)
 
 class RealtimeConsumer(EventDispatchMixin, AsyncJsonWebsocketConsumer):
     # -- lifecycle --------------------------------------------------------
+    groups: GroupMembership
 
     async def connect(self) -> None:
         code = self.scope['url_route']['kwargs']['code']

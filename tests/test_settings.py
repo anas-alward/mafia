@@ -20,6 +20,14 @@ CHANNEL_LAYERS = {
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_BROKER_URL = 'memory://'
 
+# Cache test config — locmem, no Redis needed (prod uses RedisCache so
+# throttles are shared across app/worker processes).
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+    }
+}
+
 # Email verification ON in tests (matches dev default); flag-off cases
 # use explicit override_settings in individual tests.
 EMAIL_VERIFICATION_ENABLED = True

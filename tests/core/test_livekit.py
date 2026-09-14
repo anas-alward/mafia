@@ -11,7 +11,10 @@ pytestmark = pytest.mark.django_db
 
 
 class TestLiveKitClient:
-    def test_add_participant_returns_credentials(self) -> None:
+    def test_add_participant_returns_credentials(self, settings) -> None:
+        # Pin LIVEKIT_URL: the value is env-driven (repo .env overrides the
+        # default), so the test must not depend on ambient environment.
+        settings.LIVEKIT_URL = 'ws://localhost:7880'
         client = LiveKitClient()
 
         credentials = client.add_participant(
