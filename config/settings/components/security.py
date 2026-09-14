@@ -1,5 +1,6 @@
+from config.settings.components.base import DEBUG
+
 from ..env import env
-from .base import DEBUG
 
 CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS')
 
