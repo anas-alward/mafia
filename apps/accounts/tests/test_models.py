@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 
 from apps.accounts.models import User
@@ -52,3 +54,25 @@ class UserModelTests(TestCase):
                 email='duplicate@example.com',
                 password='TestPass456',
             )
+
+    def test_username_is_case_insensitively_unique(self) -> None:
+        """The DB backstop rejects usernames differing only by case."""
+        User.objects.create_user(
+            username='Taken',
+            email='owner@example.com',
+            password='TestPass123',
+        )
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                User.objects.create_user(
+                    username='taken',
+                    email='other@example.com',
+                    password='TestPass456',
+                )
+
+    def test_username_pattern_rejected_by_full_clean(self) -> None:
+        """Usernames with spaces/special chars fail model validation."""
+        user = User(username='bad name!', email='bad@example.com')
+        with self.assertRaises(ValidationError) as ctx:
+            user.full_clean()
+        assert 'username' in ctx.exception.message_dict

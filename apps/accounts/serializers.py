@@ -3,15 +3,11 @@
 from __future__ import annotations
 
 from django.contrib.auth import get_user_model
-from django.core.validators import RegexValidator
 from rest_framework import serializers
 
-User = get_user_model()
+from apps.core.utils.validators import username_validator
 
-username_validator = RegexValidator(
-    regex=r'^[a-zA-Z0-9_-]+$',
-    message='Username can only contain letters, numbers, underscores, and hyphens.',
-)
+User = get_user_model()
 
 
 class RegisterSerializer(serializers.Serializer):

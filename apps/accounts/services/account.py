@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.contrib.auth.backends import ModelBackend
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -20,29 +20,6 @@ if TYPE_CHECKING:
     from apps.accounts.models import User
 else:
     User = get_user_model()
-
-
-class EmailAuthBackend(ModelBackend):
-    """Authenticate by email. Blocks unverified users when verification is enabled."""
-
-    def authenticate(
-        self,
-        request: object | None = None,
-        username: str | None = None,
-        password: str | None = None,
-        **kwargs: object,
-    ) -> User | None:
-        if username is None or password is None:
-            return None
-        try:
-            user = User.objects.get(email__iexact=username.lower())
-        except User.DoesNotExist:
-            return None
-        if not user.check_password(password):
-            return None
-        if settings.EMAIL_VERIFICATION_ENABLED and not user.is_verified:
-            return None
-        return user
 
 
 class AccountService:
@@ -64,25 +41,24 @@ class AccountService:
             raise ValueError('An account with this email already exists.')
 
         resolved_username = (username or email.split('@')[0]).strip()
-        username_taken = (
-            User.objects.filter(username__iexact=resolved_username)
-            .exclude(email__iexact=email)
-            .exists()
-        )
-        if username_taken:
-            raise ValueError('This username is already taken.')
+
+        user = User.objects.filter(email=email).first()
+        if user is None:
+            user = User(email=email)
+        user.username = resolved_username
+        user.is_active = True
+        user.is_verified = False
+        user.set_password(password)
+
+        try:
+            user.full_clean()
+        except ValidationError as exc:
+            if 'username' in exc.message_dict:
+                raise ValueError('This username is already taken.')
+            raise ValueError('Invalid registration details.')
 
         try:
             with transaction.atomic():
-                user, _created = User.objects.update_or_create(
-                    email=email,
-                    defaults={
-                        'username': resolved_username,
-                        'is_active': True,
-                        'is_verified': False,
-                    },
-                )
-                user.set_password(password)
                 user.save()
         except IntegrityError:
             # Race: another request claimed the username concurrently.
