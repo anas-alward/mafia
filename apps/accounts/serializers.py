@@ -3,12 +3,24 @@
 from __future__ import annotations
 
 from django.contrib.auth import get_user_model
+from django.core.validators import RegexValidator
 from rest_framework import serializers
 
 User = get_user_model()
 
+username_validator = RegexValidator(
+    regex=r'^[a-zA-Z0-9_-]+$',
+    message='Username can only contain letters, numbers, underscores, and hyphens.',
+)
+
 
 class RegisterSerializer(serializers.Serializer):
+    username = serializers.CharField(
+        required=False,
+        min_length=3,
+        max_length=30,
+        validators=[username_validator],
+    )
     email = serializers.EmailField(required=True)
     password = serializers.CharField(write_only=True, min_length=8)
 
@@ -19,6 +31,19 @@ class RegisterSerializer(serializers.Serializer):
                 'A verified account with this email already exists.'
             )
         return value
+
+    def validate(self, attrs):
+        username = attrs.get('username')
+        if username:
+            email = attrs.get('email', '').lower().strip()
+            taken = (
+                User.objects.filter(username__iexact=username.strip())
+                .exclude(email__iexact=email)
+                .exists()
+            )
+            if taken:
+                raise serializers.ValidationError({'username': 'This username is already taken.'})
+        return attrs
 
 class VerifyEmailSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)

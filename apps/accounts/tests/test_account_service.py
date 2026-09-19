@@ -47,6 +47,51 @@ class AccountServiceRegisterTests(TestCase):
         with self.assertRaises(ValueError):
             self.service.register(email='verified@example.com', password='NewPass456')
 
+    def test_register_duplicate_username_rejected(self) -> None:
+        """register() raises ValueError when username is taken by another email."""
+        User.objects.create_user(
+            username='taken',
+            email='owner@example.com',
+            password='TestPass123',
+            is_verified=True,
+        )
+        with self.assertRaisesRegex(ValueError, 'username'):
+            self.service.register(
+                email='other@example.com',
+                password='NewPass456',
+                username='taken',
+            )
+
+    def test_register_derived_username_collision_rejected(self) -> None:
+        """register() rejects when the email-prefix username is already taken."""
+        User.objects.create_user(
+            username='sameprefix',
+            email='sameprefix@other.com',
+            password='TestPass123',
+            is_verified=True,
+        )
+        with self.assertRaisesRegex(ValueError, 'username'):
+            self.service.register(
+                email='sameprefix@example.com',
+                password='NewPass456',
+            )
+
+    def test_register_same_email_may_reuse_username(self) -> None:
+        """Re-registering an unverified email keeps its own username."""
+        User.objects.create_user(
+            username='reuse',
+            email='reuse@example.com',
+            password='OldPass1',
+            is_verified=False,
+        )
+        result = self.service.register(
+            email='reuse@example.com',
+            password='NewPass2',
+            username='reuse',
+        )
+        user: User = result['user']  # type: ignore[assignment]
+        assert user.username == 'reuse'
+
     @override_settings(EMAIL_VERIFICATION_ENABLED=True)
     @patch('apps.accounts.services.account.send_verification_email_task')
     def test_register_unverified_override(self, mock_task: MagicMock) -> None:

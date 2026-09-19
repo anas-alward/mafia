@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.backends import ModelBackend
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.services.token import TokenService
@@ -55,7 +55,7 @@ class AccountService:
     # Registration
     # ------------------------------------------------------------------
 
-    def register(self, email: str, password: str) -> dict[str, object]:
+    def register(self, email: str, password: str, username: str | None = None) -> dict[str, object]:
         """Create or override an unverified account and send verification code."""
         email = email.lower().strip()
 
@@ -63,17 +63,30 @@ class AccountService:
         if User.objects.filter(email=email, is_verified=True).exists():
             raise ValueError('An account with this email already exists.')
 
-        with transaction.atomic():
-            user, _created = User.objects.update_or_create(
-                email=email,
-                defaults={
-                    'username': email.split('@')[0],
-                    'is_active': True,
-                    'is_verified': False,
-                },
-            )
-            user.set_password(password)
-            user.save()
+        resolved_username = (username or email.split('@')[0]).strip()
+        username_taken = (
+            User.objects.filter(username__iexact=resolved_username)
+            .exclude(email__iexact=email)
+            .exists()
+        )
+        if username_taken:
+            raise ValueError('This username is already taken.')
+
+        try:
+            with transaction.atomic():
+                user, _created = User.objects.update_or_create(
+                    email=email,
+                    defaults={
+                        'username': resolved_username,
+                        'is_active': True,
+                        'is_verified': False,
+                    },
+                )
+                user.set_password(password)
+                user.save()
+        except IntegrityError:
+            # Race: another request claimed the username concurrently.
+            raise ValueError('This username is already taken.')
 
         if settings.EMAIL_VERIFICATION_ENABLED:
             code = self._token_service.generate_verification_code()

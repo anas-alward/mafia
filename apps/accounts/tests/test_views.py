@@ -156,6 +156,75 @@ class US1RegisterVerifyTests(TestCase):
         assert resp.status_code == 200
 
 
+class US1bRegisterUsernameConflictTests(TestCase):
+    """Register rejects taken usernames with the standard error format."""
+
+    def setUp(self) -> None:
+        self.client = APIClient()
+        self.register_url = reverse('accounts:register')
+
+    def test_register_taken_username_returns_field_error(self) -> None:
+        """An explicitly supplied taken username returns a username field error."""
+        User.objects.create_user(
+            username='takenname',
+            email='owner@example.com',
+            password='TestPass123',
+            is_verified=True,
+        )
+
+        resp = self.client.post(self.register_url, {
+            'username': 'takenname',
+            'email': 'new@example.com',
+            'password': 'TestPass123',
+        }, format='json')
+
+        assert resp.status_code == 400
+        body = resp.json()
+        assert body['errors'][0]['field'] == 'username'
+        assert 'username' in body['errors'][0]['message'].lower()
+
+    def test_register_derived_username_collision_returns_409(self) -> None:
+        """Omitting username when the email prefix is taken returns USERNAME_TAKEN."""
+        User.objects.create_user(
+            username='sameprefix',
+            email='sameprefix@other.com',
+            password='TestPass123',
+            is_verified=True,
+        )
+
+        resp = self.client.post(self.register_url, {
+            'email': 'sameprefix@example.com',
+            'password': 'TestPass123',
+        }, format='json')
+
+        assert resp.status_code == 409
+        body = resp.json()
+        assert body['errors'][0]['code'] == 'USERNAME_TAKEN'
+        assert 'username' in body['message'].lower()
+
+    def test_register_view_maps_service_errors_to_codes(self) -> None:
+        """RegisterView maps service ValueErrors to USERNAME_TAKEN/EMAIL_TAKEN."""
+        cases = [
+            ('A user with this username already exists.', 'USERNAME_TAKEN'),
+            ('An account with this email already exists.', 'EMAIL_TAKEN'),
+        ]
+        for message, code in cases:
+            with (
+                self.subTest(code=code),
+                patch('apps.accounts.views.AccountService') as mock_service,
+            ):
+                mock_service.return_value.register.side_effect = ValueError(message)
+                resp = self.client.post(self.register_url, {
+                    'username': 'uniquename',
+                    'email': 'unique@example.com',
+                    'password': 'TestPass123',
+                }, format='json')
+                assert resp.status_code == 409
+                body = resp.json()
+                assert body['errors'][0]['code'] == code
+                assert body['message'] == message
+
+
 class US2LoginTests(TestCase):
     """User Story 2: Login with Email."""
 

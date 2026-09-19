@@ -43,7 +43,15 @@ class RegisterView(generics.CreateAPIView):
         try:
             result = AccountService().register(**serializer.validated_data)
         except ValueError as e:
-            return api_error(str(e), status=status.HTTP_409_CONFLICT)
+            message = str(e)
+            lowered = message.lower()
+            if 'username' in lowered:
+                code = 'USERNAME_TAKEN'
+            elif 'email' in lowered:
+                code = 'EMAIL_TAKEN'
+            else:
+                code = 'error'
+            return api_error(message, code=code, status=status.HTTP_409_CONFLICT)
 
         user: Any = result['user']
         return Response({
